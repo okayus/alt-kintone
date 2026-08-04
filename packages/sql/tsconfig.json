@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // tsc は --noEmit の typecheck 専用で、実ビルドは tsdown (`vp pack`) が行う。
+    // 下の paths が rootDir の外（packages/dsl/src）を指すため、rootDir/outDir と
+    // 併用すると TS6059 が出る。noEmit / declaration:false で回避する。
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      // prebuild なしで typecheck できるようソースを直接指す。実行時は pnpm の
+      // workspace シンボリックリンク経由で packages/dsl/dist を解決する。
+      "@alt/dsl": ["../../packages/dsl/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist"]
+}

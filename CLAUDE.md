@@ -118,6 +118,20 @@
 12. **客先のIDプロバイダ**（Google Workspace / Microsoft 365 / 他）、SSOが使える契約プランか、入退社時のアカウント管理の運用 ← 認証をIdPに委譲するため
 ※ 8〜11 を含む追加ヒアリング項目の全体は `docs/sales-domain.md` §17-3
 
+## 開発環境（2026-08-04 構築）
+
+`../fullstack-monorepo` を参考にした Docker + TypeScript 構成。詳細は `README.md`。
+
+- **pnpm workspace**（`packages/*`, `apps/*`）+ TypeScript 7.0.2 + `tsconfig.base.json`（strict, NodeNext）
+- **vite-plus (`vp`)** で pack / test / lint / fmt を統一。テストは vitest、lint は oxlint
+- パッケージ: `@alt/dsl`（条件式ASTの定義とビルダー）、`@alt/sql`（AST→SQL変換。**Goに移植する部分**）
+- **作業はコンテナ内**: `docker compose up -d` → `docker compose exec dev pnpm test`
+  - `pnpm install` は compose の command が起動時に実行する
+  - **ポートは未公開**（サーバーがまだ無く、ホストの3000/5173は別プロジェクトのコンテナが使用中）
+  - **パッケージを追加したら `docker-compose.yml` の匿名ボリュームにも追記する**
+- `typecheck` / `test` は **prebuild不要**。パッケージ間参照は tsconfig の `paths` でソースを直接指す
+- 落とし穴（対処済み）: `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` が無いと、非対話起動で `pnpm install` が corepack の確認待ちで無限に止まる
+
 ## 作業ルール
 
 - ドキュメント・コミュニケーションは日本語
@@ -135,10 +149,11 @@
 
 - `docs/domain-model.md` の改訂（v2）
 - 条件式AST仕様（`docs/condition-ast.md`）。domain-model の出口条件を全件この形で書けることを検証済み
+- 開発環境の構築（Docker + pnpm workspace + vite-plus）。`@alt/dsl` / `@alt/sql` の骨格と疎通テストまで
 
 ### いま進める（ドメインモデリングの実装）
 
-1. **TS DSL の実装** — AST型定義+JSON Schema → ビルダー（`table`/`flow`/`step`/`check`/`bind`、暗黙結合の展開）→ SQL変換（SQLite）→ テストケースJSON整備（`condition-ast.md` §9 の順序）
+1. **条件式ASTの実装** — 残りのノード（field / context / aggregate / 各Pred）を zod で定義 → `z.toJSONSchema()` でJSON Schema出力 → ビルダー（暗黙結合の展開）→ SQL変換（SQLite）→ テストケースJSON整備（`condition-ast.md` §9 の順序）。**literal ノードのみ実装済み**
 2. **ドメインモデル v2 を TS DSL で書き下ろす** — `definitions/tables/*.ts` と `definitions/flows/{sales,job_ad_production,meo_operation}.ts`。1と行き来しながら進めてよい
 3. `alt validate` の3層 → `alt plan` / `alt apply`（ローカルSQLite）
 4. 最小のバックエンド（TS版）とFE

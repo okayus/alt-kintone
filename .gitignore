@@ -1,6 +1,11 @@
 node_modules/
+.pnpm-store/
 dist/
-.wrangler/
-.dev.vars
+*.tsbuildinfo
+data/
 .env*
 *.local
+.DS_Store
+
+# `vp pack --dts` が型生成の副産物として src に .d.ts を残す（生成物）
+packages/*/src/*.d.ts

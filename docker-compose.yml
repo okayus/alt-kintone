@@ -1,0 +1,40 @@
+# ローカル開発。リポジトリを bind mount して常駐させ、コンテナ内で作業する。
+#
+#   docker compose up -d
+#   docker compose exec dev pnpm test
+#   docker compose exec dev pnpm typecheck
+#
+# インフラ（ホスティング・マネージドDB）は決めない方針なので、ここにあるのは
+# 開発環境だけ（docs/product-concept.md §4-0）。
+services:
+  dev:
+    build:
+      context: .
+      target: dev
+    container_name: alt-kintone-dev
+    working_dir: /app
+    # ポートはまだ公開しない。サーバーが無いうえ、ホストの 3000 / 5173 は
+    # 別プロジェクトのコンテナが使っていて衝突する。API と FE を作るときに
+    # 空いているポート（例: 3100 / 5273）を選んでここに追加する。
+    # ports:
+    #   - "5273:5173"
+    #   - "3100:3000"
+    volumes:
+      - .:/app
+      # 匿名ボリューム。上の bind mount が各パッケージの node_modules を
+      # ホスト側の（空の）ディレクトリで覆い隠すのを防ぐ。
+      # パッケージを追加したらここにも足すこと。
+      - /app/node_modules
+      - /app/packages/dsl/node_modules
+      - /app/packages/sql/node_modules
+      - sqlite-data:/app/data
+    environment:
+      # alt apply のローカル適用先（docs/product-concept.md §4-0）
+      DATABASE_URL: file:/app/data/alt.db
+    init: true
+    tty: true
+    # dev サーバーができたら `pnpm dev` に差し替える
+    command: sh -c "pnpm install && tail -f /dev/null"
+
+volumes:
+  sqlite-data:
