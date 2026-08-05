@@ -39,7 +39,13 @@ type Expr =
 ```
 
 - `source`: `'root'`（評価対象のレコード）またはサブクエリのエイリアス
-- `path`: 長さ1なら自テーブルの列。**2以上ならリレーションを辿る**（`['contact','isDecisionMaker']` は `contactId` を辿って `contact.isDecisionMaker`）
+- `path`: 長さ1なら自テーブルの列。**2以上ならリレーションを辿る**
+
+`path` に書くのは**外部キーのフィールド名そのもの**（`['contactId','isDecisionMaker']`）。
+DSL では `a.contact.isDecisionMaker` と書けるが、**ビルダーが `contactId` に展開してから** AST にする。
+
+リレーション名（`contact`）を AST に持たせると、`contactId` から `Id` を落として `contact` と読む
+暗黙ルールが必要になり、それを Go 側にも実装させることになる。方針1（AST は完全に明示的）に反するので採らない。
 
 ### 2-2. Pred（真偽を返す）
 
