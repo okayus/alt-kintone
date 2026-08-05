@@ -1,0 +1,56 @@
+{
+  "employee": {
+    "name": "employee",
+    "global": true,
+    "fields": {
+      "id": { "type": "uuid", "required": true, "primaryKey": true },
+      "name": { "type": "text", "required": true, "primaryKey": false }
+    }
+  },
+  "company": {
+    "name": "company",
+    "global": false,
+    "fields": {
+      "id": { "type": "uuid", "required": true, "primaryKey": true },
+      "name": { "type": "text", "required": true, "primaryKey": false }
+    }
+  },
+  "contact": {
+    "name": "contact",
+    "global": false,
+    "fields": {
+      "id": { "type": "uuid", "required": true, "primaryKey": true },
+      "companyId": { "type": "uuid", "required": true, "primaryKey": false, "references": "company" },
+      "isDecisionMaker": { "type": "boolean", "required": true, "primaryKey": false }
+    }
+  },
+  "deal": {
+    "name": "deal",
+    "global": false,
+    "fields": {
+      "id": { "type": "uuid", "required": true, "primaryKey": true },
+      "companyId": { "type": "uuid", "required": true, "primaryKey": false, "references": "company" },
+      "initialBilling": { "type": "integer", "required": false, "primaryKey": false },
+      "monthlyBilling": { "type": "integer", "required": false, "primaryKey": false },
+      "expectedCloseMonth": { "type": "yearMonth", "required": false, "primaryKey": false },
+      "status": {
+        "type": "enum",
+        "required": true,
+        "primaryKey": false,
+        "values": ["open", "suspended", "won", "lost", "abandoned"]
+      },
+      "ownerEmployeeId": { "type": "uuid", "required": true, "primaryKey": false, "references": "employee" }
+    }
+  },
+  "activity": {
+    "name": "activity",
+    "global": false,
+    "fields": {
+      "id": { "type": "uuid", "required": true, "primaryKey": true },
+      "dealId": { "type": "uuid", "required": false, "primaryKey": false, "references": "deal" },
+      "contactId": { "type": "uuid", "required": false, "primaryKey": false, "references": "contact" },
+      "scheduledAt": { "type": "datetime", "required": false, "primaryKey": false },
+      "completedAt": { "type": "datetime", "required": false, "primaryKey": false }
+    }
+  }
+}

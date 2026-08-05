@@ -1,0 +1,37 @@
+{
+  "case": "時点指定（as_of）で過去のバージョンを見る",
+  "note": "有効期間型の要点（docs/product-concept.md §4-1）。d1 は 2026-07-15 に 180000 → 240000 へ増額された。7月末時点では新しい値、7月10日時点では古い値を見る",
+  "root": "deal",
+  "asOf": "2026-07-10",
+  "ast": {
+    "type": "compare",
+    "op": "gt",
+    "left": { "type": "field", "source": "root", "path": ["initialBilling"] },
+    "right": { "type": "literal", "value": 200000 }
+  },
+  "fixtures": {
+    "company": [{ "id": "c1", "name": "山田食堂", "valid_from": "2026-01-01" }],
+    "employee": [{ "id": "e1", "name": "山田", "valid_from": "2026-01-01" }],
+    "deal": [
+      {
+        "id": "d1",
+        "companyId": "c1",
+        "status": "open",
+        "ownerEmployeeId": "e1",
+        "initialBilling": 180000,
+        "valid_from": "2026-07-01",
+        "valid_to": "2026-07-15"
+      },
+      {
+        "id": "d1",
+        "companyId": "c1",
+        "status": "open",
+        "ownerEmployeeId": "e1",
+        "initialBilling": 240000,
+        "valid_from": "2026-07-15",
+        "valid_to": null
+      }
+    ]
+  },
+  "expected": { "d1": false }
+}

@@ -95,7 +95,7 @@ export function compilePred(pred: Pred, options: CompileOptions): SqlFragment {
 // ---------------------------------------------------------------------------
 
 function param(b: Builder, value: unknown): string {
-  b.params.push(value)
+  b.params.push(b.dialect.bindValue(value))
   return b.dialect.placeholder(b.params.length - 1)
 }
 

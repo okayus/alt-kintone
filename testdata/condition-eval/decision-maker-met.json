@@ -1,0 +1,53 @@
+{
+  "case": "決裁者に会えている（docs/domain-model.md §6-1）",
+  "note": "exists の中でリレーションを辿る。activity → contact の外部キーを経由して決裁権フラグを見る",
+  "root": "deal",
+  "ast": {
+    "type": "exists",
+    "table": "activity",
+    "alias": "a",
+    "where": {
+      "type": "and",
+      "operands": [
+        {
+          "type": "compare",
+          "op": "eq",
+          "left": { "type": "field", "source": "a", "path": ["dealId"] },
+          "right": { "type": "field", "source": "root", "path": ["id"] }
+        },
+        { "type": "isNotNull", "operand": { "type": "field", "source": "a", "path": ["completedAt"] } },
+        {
+          "type": "compare",
+          "op": "eq",
+          "left": { "type": "field", "source": "a", "path": ["contactId", "isDecisionMaker"] },
+          "right": { "type": "literal", "value": true }
+        }
+      ]
+    }
+  },
+  "fixtures": {
+    "company": [{ "id": "c1", "name": "山田食堂" }],
+    "employee": [{ "id": "e1", "name": "山田" }],
+    "contact": [
+      { "id": "p1", "companyId": "c1", "isDecisionMaker": true },
+      { "id": "p2", "companyId": "c1", "isDecisionMaker": false }
+    ],
+    "deal": [
+      { "id": "d1", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" },
+      { "id": "d2", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" },
+      { "id": "d3", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" },
+      { "id": "d4", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" }
+    ],
+    "activity": [
+      { "id": "a1", "dealId": "d1", "contactId": "p1", "completedAt": "2026-07-01T10:00:00Z" },
+      { "id": "a2", "dealId": "d2", "contactId": "p2", "completedAt": "2026-07-01T10:00:00Z" },
+      { "id": "a3", "dealId": "d3", "contactId": "p1", "scheduledAt": "2026-08-10T10:00:00Z" }
+    ]
+  },
+  "expected": {
+    "d1": true,
+    "d2": false,
+    "d3": false,
+    "d4": false
+  }
+}

@@ -180,7 +180,8 @@ describe('リレーションを辿る field', () => {
       '(SELECT "_j0"."is_decision_maker" FROM "contact" "_j0"' +
         ' WHERE "_j0"."id" = "a"."contact_id" AND "_j0"."valid_to" IS NULL)',
     )
-    expect(r.params).toEqual([true])
+    // SQLite に真偽型は無いので 0/1 になる（下の「方言」を参照）
+    expect(r.params).toEqual([1])
   })
 
   it('2段辿ると JOIN でつなぐ', () => {
@@ -290,6 +291,28 @@ describe('方言', () => {
     )
     expect(r.sql).toBe('("d"."initial_billing" > $1 OR "d"."monthly_billing" > $2)')
     expect(r.params).toEqual([0, 1])
+  })
+
+  // 値そのものの表現も方言差。SQLite には真偽型が無い
+  const isDecisionMaker: Pred = {
+    type: 'compare',
+    op: 'eq',
+    left: field(['isDecisionMaker']),
+    right: lit(true),
+  }
+
+  it('SQLite は boolean を 0/1 にする', () => {
+    const r = compile(isDecisionMaker, { rootTable: 'contact', rootAlias: 'c' })
+    expect(r.params).toEqual([1])
+  })
+
+  it('PostgreSQL は boolean のまま渡す', () => {
+    const r = compile(isDecisionMaker, {
+      rootTable: 'contact',
+      rootAlias: 'c',
+      dialect: postgres,
+    })
+    expect(r.params).toEqual([true])
   })
 })
 

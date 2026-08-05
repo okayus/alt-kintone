@@ -1,0 +1,45 @@
+{
+  "case": "3回以上接触している（表現力レベル3の集計）",
+  "note": "空集合に対する COUNT は 0 であって NULL ではない。d3 が false になることで確認する",
+  "root": "deal",
+  "ast": {
+    "type": "compare",
+    "op": "gte",
+    "left": {
+      "type": "aggregate",
+      "fn": "count",
+      "table": "activity",
+      "alias": "a",
+      "where": {
+        "type": "and",
+        "operands": [
+          {
+            "type": "compare",
+            "op": "eq",
+            "left": { "type": "field", "source": "a", "path": ["dealId"] },
+            "right": { "type": "field", "source": "root", "path": ["id"] }
+          },
+          { "type": "isNotNull", "operand": { "type": "field", "source": "a", "path": ["completedAt"] } }
+        ]
+      }
+    },
+    "right": { "type": "literal", "value": 3 }
+  },
+  "fixtures": {
+    "company": [{ "id": "c1", "name": "山田食堂" }],
+    "employee": [{ "id": "e1", "name": "山田" }],
+    "deal": [
+      { "id": "d1", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" },
+      { "id": "d2", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" },
+      { "id": "d3", "companyId": "c1", "status": "open", "ownerEmployeeId": "e1" }
+    ],
+    "activity": [
+      { "id": "a1", "dealId": "d1", "completedAt": "2026-07-01T10:00:00Z" },
+      { "id": "a2", "dealId": "d1", "completedAt": "2026-07-02T10:00:00Z" },
+      { "id": "a3", "dealId": "d1", "completedAt": "2026-07-03T10:00:00Z" },
+      { "id": "a4", "dealId": "d2", "completedAt": "2026-07-01T10:00:00Z" },
+      { "id": "a5", "dealId": "d2", "scheduledAt": "2026-08-10T10:00:00Z" }
+    ]
+  },
+  "expected": { "d1": true, "d2": false, "d3": false }
+}
