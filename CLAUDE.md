@@ -4,14 +4,14 @@
 **最初の適用先**として、客先（求人広告・MEO営業会社）の kintone（CRM/SFA）置き換え提案を準備中。
 **このファイルはセッション横断のコンテキスト共有ハブ。作業の節目で必ず「状況サマリ」「次のアクション」を更新すること。**
 
-## 状況サマリ（最終更新: 2026-08-03）
+## 状況サマリ（最終更新: 2026-08-06）
 
 - リポジトリ: https://github.com/okayus/alt-kintone （private）
-- フェーズ: **プロダクト構想 + 提案準備**（構想 v1 記述済み。設計は未確定）
-- 完了: ドメイン調査（`docs/domain-research.md`）、コスト試算 v1（`docs/cost-simulation.md`）、営業ドメイン一般論（`docs/sales-domain.md`）、プロダクト構想 v1（`docs/product-concept.md`）、**ドメインモデル v2**（`docs/domain-model.md`。§17-2 の9点＋業務フロー定義を反映）
-- 未着手: TS DSL の実装、クライアントヒアリング、提案書ドラフト
-- 構想の設計判断は `product-concept.md` §8-1 でほぼ確定。未確定は §8-2 の8件（いずれも実装しながら決まる性質。うち2件は domain-model 改訂中に発見した論点）
-- **要判断**: 汎用の定義レジストリ+CLIを基盤として作るか、客先アプリの内部構造として実装するか（`product-concept.md` §10-1）。「客先アプリを作りながら共通部分を抽出」が現時点の推奨
+- フェーズ: **実装**（構想・設計は決着済み。ブラウザで動作確認できる最小スコープを構築中）
+- **実装セッションは `docs/implementation.md` から始める**（実装ハブ）
+- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・外部キー解決）、`@alt/sql`（AST→SQL変換・DDL・方言）、適合テスト6件。71テスト通過
+- 未着手: 定義層〜FE（4フェーズ。`docs/impl/phase-*.md`）、クライアントヒアリング、提案書ドラフト
+- **要判断（残っているもの）**: 汎用の定義レジストリ+CLIを基盤として作るか、客先アプリの内部構造として実装するか（`product-concept.md` §10-1）。「客先アプリを作りながら共通部分を抽出」が現時点の推奨
 
 ## 客先プロファイル
 
@@ -24,7 +24,8 @@
 
 | ファイル | 内容 |
 |---|---|
-| `docs/product-concept.md` | **プロダクト構想**（何を作るか。業務フロー×テーブルのバインディング、3コンポーネント、CLI×AI開発モデル、非目標、未確定の設計判断13点） |
+| **`docs/implementation.md`** | **実装ハブ。実装セッションはここから始める**。現在地・実装中ずっと効く決定10項目・ドキュメントマップ。詳細は `docs/impl/phase-*.md` に分けてあり、着手するフェーズだけ読む |
+| `docs/product-concept.md` | **プロダクト構想**（何を作るか。業務フロー×テーブルのバインディング、3コンポーネント、CLI×AI開発モデル、非目標、未確定の設計判断） |
 | `docs/domain-research.md` | ドメイン調査（kintone料金・業界構造・内製化論点・代替SaaS比較、出典付き、2026-06-12） |
 | `docs/cost-simulation.md` | コスト試算シミュレーション（kintone vs 内製 vs Zoho、損益分岐、料金モデル比較） |
 | `docs/domain-model.md` | **ドメインモデル v2**（テーブル定義・業務フロー定義3本・ロール・KPIマッピング・v1スコープ）。alt-kintoneの定義に落とす前提 |
@@ -147,16 +148,21 @@
 
 ### 完了
 
-- `docs/domain-model.md` の改訂（v2）
-- 条件式AST仕様（`docs/condition-ast.md`）。domain-model の出口条件を全件この形で書けることを検証済み
-- 開発環境の構築（Docker + pnpm workspace + vite-plus）。`@alt/dsl` / `@alt/sql` の骨格と疎通テストまで
+- `docs/domain-model.md` の改訂（v2）、条件式AST仕様（`docs/condition-ast.md`）
+- 開発環境の構築（Docker + pnpm workspace + vite-plus）
+- **条件式ASTの実装**（`@alt/dsl`）、テーブル定義と外部キー解決、**SQL変換**（`@alt/sql`）、実SQLiteで動く適合テスト6件
 
-### いま進める（ドメインモデリングの実装）
+### いま進める（実装）
 
-1. **条件式ASTの実装** — 残りのノード（field / context / aggregate / 各Pred）を zod で定義 → `z.toJSONSchema()` でJSON Schema出力 → ビルダー（暗黙結合の展開）→ SQL変換（SQLite）→ テストケースJSON整備（`condition-ast.md` §9 の順序）。**literal ノードのみ実装済み**
-2. **ドメインモデル v2 を TS DSL で書き下ろす** — `definitions/tables/*.ts` と `definitions/flows/{sales,job_ad_production,meo_operation}.ts`。1と行き来しながら進めてよい
-3. `alt validate` の3層 → `alt plan` / `alt apply`（ローカルSQLite）
-4. 最小のバックエンド（TS版）とFE
+**→ `docs/implementation.md` を読む。それが実装セッションのハブ。**
+
+ブラウザで動作確認できる最小スコープを4フェーズで作る。現在地は**フェーズ1（定義層、未着手）**。
+各フェーズの詳細は `docs/impl/phase-*.md` にあり、**着手するフェーズだけ読む**（完了したものと先のものは読まない）。
+
+実装前に決めるべき設計判断はすべて決着済み:
+- API は **REST 自動生成**（GraphQL/gRPC は動的スキーマと相性が悪い）
+- 現在ステップは **`_flow_state` テーブル**（レコード×フローの *関係* として持つ。業務テーブルの列にしない ＝ kintone と同じ構造を避ける）
+- 手動チェックは **`_manual_check`、明示キーで識別**（ラベルをキーにすると文言修正でチェックが外れる）
 
 ### 客先提案（プロトタイプと並行 or 後）
 
