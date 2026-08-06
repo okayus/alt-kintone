@@ -7,6 +7,8 @@
     "node": ">=24"
   },
   "scripts": {
+    "verify": "pnpm check:compose && pnpm typecheck && pnpm lint && pnpm test && pnpm fmt:check",
+    "check:compose": "node scripts/check-compose-volumes.mjs",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",

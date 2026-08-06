@@ -57,9 +57,14 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 
 ```sh
 docker compose up -d
-docker compose exec dev pnpm test
-docker compose exec dev pnpm typecheck
+docker compose exec dev pnpm verify    # check:compose → typecheck → lint → test → fmt:check
 ```
+
+段取り（2026-08-06 /dandori で整備）:
+
+- verify 先頭の `check:compose`（`scripts/check-compose-volumes.mjs`）が、パッケージ新設時の
+  docker-compose.yml 匿名ボリューム追記漏れを機械検知する
+- フェーズの着手は `/phase-start <N>`、完了処理（完了条件の検証・記録更新・コミット）は `/phase-done <N>`
 
 ---
 

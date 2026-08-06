@@ -36,16 +36,16 @@ TS版バックエンドは仕様であり、Go版完成後は実装を捨てて
 インフラ（ホスティング・マネージドDB）は決めない方針で、**プロトタイプはローカルで動けばよい**。
 
 ```sh
-docker compose up -d                 # イメージをビルドし、pnpm install して常駐
-docker compose exec dev pnpm test
-docker compose exec dev pnpm typecheck
+docker compose up -d                   # イメージをビルドし、pnpm install して常駐
+docker compose exec dev pnpm verify    # check:compose → typecheck → lint → test → fmt:check
 ```
 
 `pnpm install` は compose の `command` が起動時に実行するので、別途叩く必要はない。
 
 リポジトリを bind mount しているので、ホスト側のエディタでの編集がそのまま反映される。
 `node_modules` はルートと各パッケージで匿名ボリュームに置き、bind mount に覆い隠されないようにしている
-（**パッケージを追加したら `docker-compose.yml` の volumes にも追記すること**）。
+（**パッケージを追加したら `docker-compose.yml` の volumes にも追記すること**。
+忘れても `pnpm verify` 先頭の整合チェックが検知して落ちる）。
 
 **ポートは公開していない。** まだサーバーが無く、ホストの 3000 / 5173 は別プロジェクトの
 コンテナが使っているため。API と FE を作るときに空いているポートを選んで
@@ -63,6 +63,8 @@ pnpm typecheck
 
 | command | what |
 |---|---|
+| **`pnpm verify`** | **check:compose → typecheck → lint → test → fmt:check をまとめて実行。コミット前はこれ1つでよい** |
+| `pnpm check:compose` | workspace パッケージと docker-compose.yml の匿名ボリュームの整合チェック |
 | `pnpm test` | 全パッケージのテスト（vitest / `vp test`） |
 | `pnpm typecheck` | 全パッケージの型検査（`tsc --noEmit`） |
 | `pnpm build` | 全パッケージのビルド（tsdown / `vp pack`） |

@@ -9,3 +9,6 @@ data/
 
 # `vp pack --dts` が型生成の副産物として src に .d.ts を残す（生成物）
 packages/*/src/*.d.ts
+
+# Claude Code の個人設定（許可リスト）。コマンド（.claude/commands/）は共有する
+.claude/settings.local.json

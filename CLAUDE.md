@@ -126,7 +126,9 @@
 - **pnpm workspace**（`packages/*`, `apps/*`）+ TypeScript 7.0.2 + `tsconfig.base.json`（strict, NodeNext）
 - **vite-plus (`vp`)** で pack / test / lint / fmt を統一。テストは vitest、lint は oxlint
 - パッケージ: `@alt/dsl`（条件式ASTの定義とビルダー）、`@alt/sql`（AST→SQL変換。**Goに移植する部分**）
-- **作業はコンテナ内**: `docker compose up -d` → `docker compose exec dev pnpm test`
+- **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:compose → typecheck → lint → test → fmt:check をまとめて実行）
+  - `check:compose` は「パッケージ新設時の docker-compose.yml 匿名ボリューム追記」の忘れを機械検知する
+  - フェーズの着手/完了は `/phase-start <N>` / `/phase-done <N>`（`docs/implementation.md` 参照）
   - `pnpm install` は compose の command が起動時に実行する
   - **ポートは未公開**（サーバーがまだ無く、ホストの3000/5173は別プロジェクトのコンテナが使用中）
   - **パッケージを追加したら `docker-compose.yml` の匿名ボリュームにも追記する**
