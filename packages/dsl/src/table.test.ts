@@ -99,7 +99,11 @@ describe('table', () => {
   })
 
   it('enum は values が無いと弾かれる', () => {
-    const broken = { name: 'x', global: false, fields: { s: { type: 'enum', required: true, primaryKey: false } } }
+    const broken = {
+      name: 'x',
+      global: false,
+      fields: { s: { type: 'enum', required: true, primaryKey: false } },
+    }
     expect(tableDefSchema.safeParse(broken).success).toBe(false)
   })
 })
@@ -123,10 +127,7 @@ describe('foreignKeysTo', () => {
       createdByEmployeeId: reference('employee').required(),
       assignedEmployeeId: reference('employee'),
     })
-    expect(foreignKeysTo(task, 'employee')).toEqual([
-      'createdByEmployeeId',
-      'assignedEmployeeId',
-    ])
+    expect(foreignKeysTo(task, 'employee')).toEqual(['createdByEmployeeId', 'assignedEmployeeId'])
   })
 
   it('相互参照するテーブルも引ける', () => {

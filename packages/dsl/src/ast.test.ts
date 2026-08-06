@@ -11,8 +11,7 @@ import {
 
 // AST は純粋なデータ形式なので、テストではノードを直接書く。
 // 書き味を整えるビルダーは TS 固有の層として別に用意する。
-const field = (path: string[], source = ROOT_SOURCE) =>
-  ({ type: 'field', source, path }) as const
+const field = (path: string[], source = ROOT_SOURCE) => ({ type: 'field', source, path }) as const
 const lit = (value: string | number | boolean | null) => ({ type: 'literal', value }) as const
 
 describe('AST_VERSION', () => {
@@ -99,9 +98,9 @@ describe('述語', () => {
   })
 
   it('in は空の候補を弾く', () => {
-    expect(
-      predSchema.safeParse({ type: 'in', left: field(['status']), values: [] }).success,
-    ).toBe(false)
+    expect(predSchema.safeParse({ type: 'in', left: field(['status']), values: [] }).success).toBe(
+      false,
+    )
     expect(
       predSchema.safeParse({ type: 'in', left: field(['status']), values: ['won', 'lost'] })
         .success,
@@ -117,9 +116,9 @@ describe('述語', () => {
     expect(predSchema.safeParse({ type: 'isNull', operand: field(['closedAt']) }).success).toBe(
       true,
     )
-    expect(
-      predSchema.safeParse({ type: 'isNotNull', operand: field(['closedAt']) }).success,
-    ).toBe(true)
+    expect(predSchema.safeParse({ type: 'isNotNull', operand: field(['closedAt']) }).success).toBe(
+      true,
+    )
   })
 })
 

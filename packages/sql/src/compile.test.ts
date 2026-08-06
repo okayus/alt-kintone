@@ -16,9 +16,13 @@ import { compilePred, type ContextValues } from './compile.js'
 import { postgres } from './dialect.js'
 
 // docs/domain-model.md §5 のテーブルを一部抜き出したもの
-const employee = table('employee', { id: uuid().primaryKey(), name: text().required() }, {
-  global: true,
-})
+const employee = table(
+  'employee',
+  { id: uuid().primaryKey(), name: text().required() },
+  {
+    global: true,
+  },
+)
 const company = table('company', { id: uuid().primaryKey(), name: text().required() })
 const contact = table('contact', {
   id: uuid().primaryKey(),
@@ -82,7 +86,12 @@ describe('リテラルと比較', () => {
   })
 
   it('文字列も引用せずバインドする（インジェクションの余地を作らない）', () => {
-    const r = compile({ type: 'compare', op: 'eq', left: field(['status']), right: lit("' OR 1=1--") })
+    const r = compile({
+      type: 'compare',
+      op: 'eq',
+      left: field(['status']),
+      right: lit("' OR 1=1--"),
+    })
     expect(r.sql).toBe('"d"."status" = ?')
     expect(r.params).toEqual(["' OR 1=1--"])
   })
@@ -204,7 +213,9 @@ describe('リレーションを辿る field', () => {
   })
 
   it('未知のエイリアスは例外にする', () => {
-    expect(() => compile({ type: 'isNull', operand: field(['id'], 'zzz') })).toThrow(/未知の source/)
+    expect(() => compile({ type: 'isNull', operand: field(['id'], 'zzz') })).toThrow(
+      /未知の source/,
+    )
   })
 })
 
@@ -327,7 +338,12 @@ describe('パラメータの順序', () => {
             type: 'exists',
             table: 'activity',
             alias: 'a',
-            where: { type: 'compare', op: 'eq', left: field(['dealId'], 'a'), right: field(['id']) },
+            where: {
+              type: 'compare',
+              op: 'eq',
+              left: field(['dealId'], 'a'),
+              right: field(['id']),
+            },
           },
           { type: 'compare', op: 'gt', left: field(['initialBilling']), right: lit(100) },
         ],
