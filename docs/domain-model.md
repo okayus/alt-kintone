@@ -93,6 +93,32 @@ erDiagram
 
 ## 5. 主要テーブルの属性
 
+以下の各表は**表示ラベル**で書いてある。実装上の enum の値は英語キーで、対応は §5-0 の表。
+
+### 5-0. enum の値と表示ラベル
+
+enum の値は DB に入り、条件式 AST のリテラルになる**識別子**であって、画面に出る文字列ではない。日本語で兼用すると文言を直した瞬間に既存データが孤児になるため、**値は英語キー・表示は対応表**に分ける（`product-concept.md` §8-1「フェーズ1で決めたもの」）。
+
+| テーブル.フィールド | 値 → ラベル |
+|---|---|
+| `company.industry` | `restaurant` 飲食 / `beauty` 美容 / `medical` 医療 / `retail` 小売 / `other` その他 |
+| `company.leadSource` | `cold_call` テレアポ / `web_form` フォーム / `referral` 紹介 / `existing_upsell` 既存深耕 |
+| `company.status` | `prospect` 見込み / `active` 取引中 / `dormant` 休眠 / `churned` 解約済 |
+| `store.status` | `open` 営業中 / `closed` 閉店 |
+| `employee.role` | §7 のロールキーをそのまま使う |
+| `employee.status` | `active` 在籍 / `retired` 退職 |
+| `deal.productType` | `job_ad` 求人広告 / `meo` MEO / `other` その他 |
+| `deal.dealType` | `new` 新規 / `renewal` 更新 / `repeat` 再掲 / `expansion` 拡大 |
+| `deal.status` | `open` 進行中 / `suspended` 保留 / `won` 受注 / `lost` 失注 / `abandoned` 消滅 |
+| `deal.outcomeReasonCategory` | `competitor` 競合負け / `own_reason` 自社都合 / `buyer_reason` 買い手都合 / `no_decision` 意思決定なし |
+| `deal.confidence` | `A` / `B` / `C`（ヨミ確度。表示もそのまま） |
+| `activity.type` | `call` 架電 / `visit` 訪問 / `online_meeting` オンライン商談 / `email` メール / `other` その他 |
+| `activity.result` | `connected` 接続 / `no_answer` 不在 / `appointment` アポ獲得 / `advanced` 前進 / `won` 受注 / `lost` 失注 / `other` その他 |
+| `contract.status` | `active` 進行中 / `completed` 完了 / `cancelled` 解約済 |
+| `contract_change.changeType` | `renewal` 更新 / `expansion` 増額 / `contraction` 減額 / `cancel_notified` 解約予告 / `cancelled` 解約 |
+
+※ 未実装テーブル（`store` / `contract` / `contract_change`）のキーは**仮置き**。定義を書き起こす時点で確定する。
+
 ### company 顧客企業
 ```
 id, 名称, 名称カナ, 業種(飲食/美容/医療/小売/その他), 都道府県, 市区町村, 住所,
@@ -139,12 +165,13 @@ contract_months   契約期間(月)          ← ストック型のみ
 
 expected_close_month 見込み受注月,
 confidence ヨミ確度(A/B/C),
-current_step 現在のステップ            ← プラットフォームが管理（§10-2）
 status(open/suspended/won/lost/abandoned),
 outcome_reason_category(競合負け/自社都合/買い手都合/意思決定なし),
 outcome_reason_detail, competitor 競合先(任意),
 owner_employee_id, closed_at 決着日, note
 ```
+
+※ **現在のステップは deal の列として持たない。** `_flow_state`（レコード × フローの関係）に置く（`product-concept.md` §8-1）。列にすると kintone と同じ「アプリが状態を抱える」構造になる
 
 **金額を4分割した理由**（`sales-domain.md` §4-4）:
 
@@ -289,15 +316,26 @@ stateDiagram-v2
 
 **ステップは買い手の状態変化で定義する**（`sales-domain.md` §4-5。売り手の作業では定義しない）。
 
-| ステップ | 買い手の状態 | 出口条件 | 判定 |
+| ステップ | 買い手の状態 | 出口条件（キー / ラベル） | 判定 |
 |---|---|---|---|
-| `contacted` 接触 | 話を聞く気になった | アポイントの予定がある | **自動**（activity に未完了の訪問/商談予定） |
-| `qualified` ヒアリング | 課題と予算を認識している | 課題を確認した | 手動 |
-| | | 予算感を確認した | **自動**（金額欄が埋まっている） |
-| | | 決裁者を特定した | **自動**（contact に決裁権フラグ付きが存在） |
-| `proposed` 提案 | 自社案を検討している | 金額を提示した | **自動**（`initial_billing` or `monthly_billing` > 0） |
-| | | 決裁者に会えている | **自動**（決裁者との完了済み activity が存在） |
-| | | 導入時期を確認した | **自動**（`expected_close_month` が入っている） |
+| `contacted` 接触 | 話を聞く気になった | `appointment_scheduled` アポイントの予定がある | **自動**（activity に未完了の訪問/オンライン商談予定） |
+| `qualified` ヒアリング | 課題と予算を認識している | `problem_identified` 課題を確認した | 手動 |
+| | | `budget_confirmed` 予算感を確認した | **自動**（金額欄が埋まっている） |
+| | | `decision_maker_identified` 決裁者を特定した | **自動**（contact に決裁権フラグ付きが存在） |
+| `proposed` 提案 | 自社案を検討している | `amount_presented` 金額を提示した | **自動**（`initial_billing` or `monthly_billing` > 0） |
+| | | `decision_maker_met` 決裁者に会えている | **自動**（決裁者との完了済み activity が存在） |
+| | | `timing_confirmed` 導入時期を確認した | **自動**（`expected_close_month` が入っている） |
+
+**出口条件のキーはラベルと独立した識別子**（`product-concept.md` §3-5）。`_manual_check` に入り、文言を直してもチェック状態が失われない。**キーを変えることは別の出口条件にすることと同義**なので、変更するときは移行を考えること。
+
+決着ステップ（上の表に出口条件が無いもの）:
+
+| ステップ | 次 | 備考 |
+|---|---|---|
+| `won` 受注 / `lost` 失注 / `abandoned` 消滅 | （終端） | `deal.status` と値が重なる。二重管理の論点は `product-concept.md` §8-2 論点9 |
+| `suspended` 保留 | `qualified` | 決着ではない。追跡は続け、予測からは外す |
+
+起点は `contacted`（フロー定義の `initial`）。遷移は `contacted → {qualified, proposed, lost}` / `qualified → {proposed, suspended, lost}` / `proposed → {won, qualified, lost, abandoned}` / `suspended → {qualified}`。
 
 - **未充足でも進める。ただし記録に残す**（`product-concept.md` §4-3）。「未確認2件で提案へ進んだ」が履歴に残り、後から「出口条件を満たさず進めた案件の受注率」を分析できる
 - **スキップと差し戻しを許す**。即決商談は `contacted → proposed` を飛ばし、「決裁者だと思っていた人が違った」は `proposed → qualified` に戻る
@@ -431,7 +469,8 @@ stateDiagram-v2
 ### 設計（alt-kintone 側に持ち帰る論点）
 
 1. **マスタ管理をどう扱うか** — `employee` や商材マスタの登録・更新は、どの業務フローに属するのか。「すべての操作は業務フロー経由」という構想と、「マスタ更新にステップも出口条件もない」という実態が衝突する。ステップ1つだけのフローを作るか、フロー定義に例外を設けるか
-2. **`current_step` は誰が持つか** — プラットフォームが管理する状態だが、ステージ別集計のしやすさを考えると業務テーブルの列にあってほしい。「プラットフォームが書き込む予約フィールド」という概念が要るかもしれない
+   - ⚠ 実装で顕在化した。営業フローは `company` / `contact` を `reference`（読むだけ）にしたので、**いま誰もマスタを更新できない**
+2. ~~**`current_step` は誰が持つか**~~ → **決着**。`_flow_state` テーブル（レコード × フローの関係、有効期間型）に持つ。業務テーブルの列にはしない（`product-concept.md` §8-1）
 
 ### 業務（ヒアリングで確定）
 

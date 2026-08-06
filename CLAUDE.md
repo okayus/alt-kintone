@@ -9,8 +9,10 @@
 - リポジトリ: https://github.com/okayus/alt-kintone （private）
 - フェーズ: **実装**（構想・設計は決着済み。ブラウザで動作確認できる最小スコープを構築中）
 - **実装セッションは `docs/implementation.md` から始める**（実装ハブ）
-- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・外部キー解決）、`@alt/sql`（AST→SQL変換・DDL・方言）、適合テスト6件。71テスト通過
-- 未着手: 定義層〜FE（4フェーズ。`docs/impl/phase-*.md`）、クライアントヒアリング、提案書ドラフト
+- 現在地: **フェーズ1（定義層）完了 → フェーズ2（CLI）が次**（全4フェーズ。`docs/impl/phase-*.md`）
+- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義）、`@alt/sql`（AST→SQL変換・DDL・プラットフォームテーブル・方言）、`@alt/definitions`（テーブル5本＋営業フロー1本＋出口条件7件）、適合テスト6件。**107テスト通過**
+- ただし**まだ何も動かない**。定義がソースコードとして存在するだけで、CLI・バックエンド・FE は未着手
+- 未着手: CLI〜FE（フェーズ2〜4）、クライアントヒアリング、提案書ドラフト
 - **要判断（残っているもの）**: 汎用の定義レジストリ+CLIを基盤として作るか、客先アプリの内部構造として実装するか（`product-concept.md` §10-1）。「客先アプリを作りながら共通部分を抽出」が現時点の推奨
 
 ## 客先プロファイル
@@ -125,14 +127,14 @@
 
 - **pnpm workspace**（`packages/*`, `apps/*`）+ TypeScript 7.0.2 + `tsconfig.base.json`（strict, NodeNext）
 - **vite-plus (`vp`)** で pack / test / lint / fmt を統一。テストは vitest、lint は oxlint
-- パッケージ: `@alt/dsl`（条件式ASTの定義とビルダー）、`@alt/sql`（AST→SQL変換。**Goに移植する部分**）
+- パッケージ: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義）、`@alt/sql`（AST→SQL変換・DDL。**Goに移植する部分**）、`@alt/definitions`（客先の定義そのもの。テーブル・営業フロー・ロール）
 - **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:compose → typecheck → lint → test → fmt:check をまとめて実行）
   - `check:compose` は「パッケージ新設時の docker-compose.yml 匿名ボリューム追記」の忘れを機械検知する
   - フェーズの着手/完了は `/phase-start <N>` / `/phase-done <N>`（`docs/implementation.md` 参照）
   - `pnpm install` は compose の command が起動時に実行する
   - **ポートは未公開**（サーバーがまだ無く、ホストの3000/5173は別プロジェクトのコンテナが使用中）
   - **パッケージを追加したら `docker-compose.yml` の匿名ボリュームにも追記する**
-- `typecheck` / `test` は **prebuild不要**。パッケージ間参照は tsconfig の `paths` でソースを直接指す
+- `typecheck` / `test` は **prebuild不要**。パッケージ間参照をソースに向ける設定が**2箇所**ある: tsconfig の `paths`（tsc用）と、ルート `vite.config.ts` の `resolve.alias`（vitest用）。**パッケージ追加時は両方に追記する**（alias が無いと vitest が `dist/` の古い成果物を読み、prebuild 忘れでテストが通ってしまう）
 - 落とし穴（対処済み）: `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` が無いと、非対話起動で `pnpm install` が corepack の確認待ちで無限に止まる
 
 ## 作業ルール
@@ -153,18 +155,24 @@
 - `docs/domain-model.md` の改訂（v2）、条件式AST仕様（`docs/condition-ast.md`）
 - 開発環境の構築（Docker + pnpm workspace + vite-plus）
 - **条件式ASTの実装**（`@alt/dsl`）、テーブル定義と外部キー解決、**SQL変換**（`@alt/sql`）、実SQLiteで動く適合テスト6件
+- **フェーズ1: 定義層**（2026-08-06）— プラットフォームテーブルのDDL（`_flow_state` / `_manual_check`）、フロー定義DSL、`@alt/definitions`（テーブル5本・営業フロー1本・出口条件7件）
 
 ### いま進める（実装）
 
 **→ `docs/implementation.md` を読む。それが実装セッションのハブ。**
 
-ブラウザで動作確認できる最小スコープを4フェーズで作る。現在地は**フェーズ1（定義層、未着手）**。
+ブラウザで動作確認できる最小スコープを4フェーズで作る。現在地は**フェーズ2（CLI、未着手）**。
 各フェーズの詳細は `docs/impl/phase-*.md` にあり、**着手するフェーズだけ読む**（完了したものと先のものは読まない）。
 
 実装前に決めるべき設計判断はすべて決着済み:
 - API は **REST 自動生成**（GraphQL/gRPC は動的スキーマと相性が悪い）
 - 現在ステップは **`_flow_state` テーブル**（レコード×フローの *関係* として持つ。業務テーブルの列にしない ＝ kintone と同じ構造を避ける）
 - 手動チェックは **`_manual_check`、明示キーで識別**（ラベルをキーにすると文言修正でチェックが外れる）
+- フローの対象は **`flow({ target })` で明示**（`primary` バインド＝所有 とは別の軸）、起点は `initial`
+- **enum の値は英語キー**。表示ラベルは `domain-model.md` §5-0 の対応表に分離
+
+フェーズ1で見つかった要検討（`product-concept.md` §8-2 論点7・9・10）:
+決着ステップと `deal.status` の二重管理 / 終端ステップの出口条件の扱い / **いま誰もマスタを更新できない**（`company`・`contact` が reference のみ）
 
 ### 客先提案（プロトタイプと並行 or 後）
 

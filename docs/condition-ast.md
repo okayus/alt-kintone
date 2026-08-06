@@ -82,6 +82,11 @@ type Pred =
 
 ## 3. TS DSL の書き味
 
+> ⚠ **この節はまだ実装していない**（2026-08-06 時点）。最小スコープでは AST を直接書く方針にしたため、
+> `packages/definitions/src/flows/sales.ts` はここに書かれたビルダーではなく生の AST オブジェクトで書かれている。
+> 暗黙結合（§4）も手で展開してある。書き味の改善はブラウザで動くものを見てから判断する
+> （`docs/implementation.md` の「作らないもの」）。以下は将来の目標形。
+
 AST を手で書くことはない。DSL がビルダーを提供する。
 
 ```typescript
@@ -173,7 +178,7 @@ SQL 関数に変換せず**パラメータとしてバインド**する。方言
 
 | 出口条件 | 表現 |
 |---|---|
-| アポイントの予定がある | `exists(activity, a => and(a.scheduledAt.isNotNull(), a.completedAt.isNull()))` |
+| アポイントの予定がある | `exists(activity, a => and(a.type.in(['visit','online_meeting']), a.scheduledAt.isNotNull(), a.completedAt.isNull()))` |
 | 課題を確認した | — （手動チェック） |
 | 予算感を確認した | `or(deal.initialBilling.gt(0), deal.monthlyBilling.gt(0))` |
 | 決裁者を特定した | `exists(contact, c => and(c.companyId.eq(deal.companyId), c.isDecisionMaker.eq(true)))` |
@@ -208,6 +213,11 @@ SQL 関数に変換せず**パラメータとしてバインド**する。方言
 | `activity` の書き込み | `activity.ownerEmployeeId.eq(currentUser())` |
 
 **結果: 1件を除きすべて表現できた。** 見つかった1件は AST ではなくモデル側の問題（§7-1）。
+
+**実装で確かめた**（2026-08-06、フェーズ1）: 6-1 の営業フロー分（自動判定5件）は実際に AST として書かれ、
+`compilePred` で SQL に変換できることをテストしている（`packages/definitions/src/definitions.test.ts`）。
+「アポイントの予定がある」は `type` の絞り込みを足した — `domain-model.md` §6-1 が「訪問/商談予定」と
+書いているのに対し、上の表が種別を見ていなかったため。**仕様側（この表）を実装に合わせて直した。**
 
 ---
 

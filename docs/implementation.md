@@ -32,12 +32,12 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 
 | フェーズ | 内容 | 状態 |
 |---|---|---|
-| 1 | [定義層](impl/phase-1-definitions.md) | **← いまここ（未着手）** |
-| 2 | [CLI](impl/phase-2-cli.md) | 未着手 |
+| 1 | [定義層](impl/phase-1-definitions.md) | **済**（2026-08-06） |
+| 2 | [CLI](impl/phase-2-cli.md) | **← いまここ（未着手）** |
 | 3 | [バックエンド](impl/phase-3-backend.md) | 未着手 |
 | 4 | [FE + 動作確認](impl/phase-4-frontend.md) | 未着手 |
 
-**次に読むもの → [impl/phase-1-definitions.md](impl/phase-1-definitions.md)**
+**次に読むもの → [impl/phase-2-cli.md](impl/phase-2-cli.md)**
 
 フェーズ2〜4 は概要と完了条件だけ書いてある。着手時に詳細化する。
 
@@ -45,13 +45,16 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 
 ## すでに動いているもの
 
-`pnpm test` で 71 テスト、`typecheck` / `lint` / `build` が通る状態。
+`pnpm verify` が通る状態（107 テスト）。
 
 | パッケージ | 中身 |
 |---|---|
-| `@alt/dsl` | 条件式AST（型・zodスキーマ・JSON Schema）、テーブル定義、外部キー解決（`foreignKeysTo` / `resolveFieldPath`）、`toColumnName` |
-| `@alt/sql` | AST → SQL 変換、`CREATE TABLE` 生成、方言（SQLite / PostgreSQL） |
+| `@alt/dsl` | 条件式AST（型・zodスキーマ・JSON Schema）、テーブル定義、**フロー定義**（`flow` / `step` / `check` / `manualCheck` / `bind`、reads・writes からの access 導出）、**ロール定義**、外部キー解決（`foreignKeysTo` / `resolveFieldPath`）、`toColumnName` |
+| `@alt/sql` | AST → SQL 変換、`CREATE TABLE` 生成、**プラットフォームテーブル**（`_flow_state` / `_manual_check`）、方言（SQLite / PostgreSQL） |
+| `@alt/definitions` | **客先の定義そのもの**。テーブル5本（deal / company / contact / employee / activity）と営業フロー1本。出口条件7件（自動5・手動2） |
 | `testdata/condition-eval/` | 言語非依存の適合テスト6件。実SQLiteで評価される |
+
+まだ無いもの: CLI（`alt`）、バックエンド、FE。定義はソースコードとして存在するだけで、まだ何も動かない。
 
 開発は Docker 内で行う。
 
@@ -65,6 +68,9 @@ docker compose exec dev pnpm verify    # check:compose → typecheck → lint �
 - verify 先頭の `check:compose`（`scripts/check-compose-volumes.mjs`）が、パッケージ新設時の
   docker-compose.yml 匿名ボリューム追記漏れを機械検知する
 - フェーズの着手は `/phase-start <N>`、完了処理（完了条件の検証・記録更新・コミット）は `/phase-done <N>`
+- **パッケージを追加したら3箇所**: `docker-compose.yml` の匿名ボリューム / 自身の `tsconfig.json` の `paths` /
+  ルート `vite.config.ts` の `resolve.alias`。alias が無いと vitest が `dist/` の古い成果物を読み、
+  prebuild 忘れに気づけない（フェーズ1で踏んだ）
 
 ---
 

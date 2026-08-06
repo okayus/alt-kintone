@@ -127,13 +127,24 @@ packages/definitions/
 
 ---
 
-## このフェーズで判断が要りそうなこと
+## このフェーズで判断が要りそうなこと → 決着（2026-08-06）
 
-実装中に決めることになったら、決めた内容を [product-concept.md §8-2](../product-concept.md) に追記すること。
+いずれも [product-concept.md §8-1](../product-concept.md) の「フェーズ1で決めたもの」に記録した。
 
-- 定義ファイルをどう集約するか（`registry()` に手で並べるか、ディレクトリを走査するか）
-- ロールの定義をどこに置くか（`domain-model.md` §7 に一覧はあるが、定義としての置き場が未定）
-- 出口条件の AST を書くとき、`root` が何を指すか明示が要るか（フローの primary テーブル？）
+| 論点 | 決着 |
+|---|---|
+| 定義ファイルの集約 | **`registry()` に手で並べる**。定義の集合が型として確定していないと FE の import が効かないため。走査は CLI 側で必要になってから |
+| ロールの置き場 | `RoleDef` / `role()` を `@alt/dsl` に、実体を `definitions/roles.ts` に。`employee.role` の enum 候補を宣言から導く |
+| 出口条件 AST の `root` | **`flow({ target })` で明示する**。`primary` バインドからは導出しない。primary は所有（ライフサイクル）、target は状態機械の主体で別の軸 — 営業フローは `activity` も所有するが、ステップを進むのは `deal` だけ |
+
+追加で決めたもの: **起点ステップ `initial` の明示**、**enum の値は英語キー**（表示ラベルは `domain-model.md` §5-0 の対応表）。
+
+### 実装して見つかった穴
+
+- 決着ステップ（`won`/`lost`/`abandoned`/`suspended`）と `deal.status` が同じ5値を二重に持つ → §8-2 論点9
+- 終端・保留ステップに出口条件が無く、validate の業務ルールに例外が要る → §8-2 論点10
+- `company`/`contact` を `reference` にしたので**誰もマスタを更新できない** → §8-2 論点7 が実体化
+- vitest がパッケージ間参照で `dist/` の古い成果物を読んでいた → ルート `vite.config.ts` に `resolve.alias` を追加
 
 ---
 

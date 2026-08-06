@@ -71,5 +71,14 @@ pnpm typecheck
 | `pnpm lint` | oxlint（`vp lint`） |
 | `pnpm fmt` | oxfmt（`vp fmt`） |
 
-`typecheck` と `test` は **prebuild を必要としない**。パッケージ間の参照は
-tsconfig の `paths` でソースを直接指しているため（`packages/sql/tsconfig.json` を参照）。
+`typecheck` と `test` は **prebuild を必要としない**。パッケージ間の参照がソースを直接指すよう、
+**2箇所**で同じ解決を与えている。
+
+| 対象 | 設定 |
+|---|---|
+| typecheck（tsc） | 各パッケージの `tsconfig.json` の `paths` |
+| test（vitest） | ルート `vite.config.ts` の `resolve.alias` |
+
+vitest 側が要るのは、無いと workspace のシンボリックリンク経由で `dist/` の**ビルド済み成果物**を
+読んでしまうため。prebuild を忘れると「古いコードのままテストが通る」という一番たちの悪い壊れ方をする。
+パッケージを追加したら**両方**に追記すること。

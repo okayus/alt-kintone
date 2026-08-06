@@ -2,6 +2,7 @@
   "name": "alt-kintone",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@11.18.0",
   "engines": {
     "node": ">=24"

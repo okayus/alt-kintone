@@ -1,3 +1,5 @@
 export * from './ast.js'
+export * from './flow.js'
+export * from './role.js'
 export * from './schema.js'
 export * from './table.js'

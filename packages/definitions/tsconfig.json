@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // packages/sql と同じ理由（下の paths が rootDir の外を指すため TS6059 が出る）。
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      // prebuild なしで typecheck できるようソースを直接指す。
+      "@alt/dsl": ["../../packages/dsl/src/index.ts"],
+      // @alt/sql はテスト専用。定義そのものは SQL 層に依存しない
+      "@alt/sql": ["../../packages/sql/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist"]
+}
