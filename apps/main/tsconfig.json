@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // packages/* と同じ理由（下の paths が rootDir の外を指すため TS6059 が出る）。
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+
+    // ここだけベースと違う。ブラウザ向けで、モジュール解決は tsc ではなく Vite が行う。
+    // Bundler にしておくと、NodeNext で書かれた @alt/definitions のソース
+    // （相対 import に .js が付いている）をそのまま型解決できる。
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+
+    "paths": {
+      // prebuild なしで typecheck できるようソースを直接指す。
+      // 同じ解決を実行時にも与えるのが apps/main/vite.config.ts の resolve.alias。
+      "@alt/definitions": ["../../packages/definitions/src/index.ts"],
+      "@alt/dsl": ["../../packages/dsl/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist"]
+}

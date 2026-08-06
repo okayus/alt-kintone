@@ -10,12 +10,13 @@
 alt-kintone は「業務フローを第一級の概念に置いた、AI前提の業務アプリ基盤」
 （構想: [product-concept.md](product-concept.md)）。
 
-いまは**ブラウザで動作確認できる最小スコープ**を作っている。
+**ブラウザで動作確認できる最小スコープは達成した**（2026-08-06、フェーズ4完了）。
 
 > **ゴール**: 営業フロー1本が、案件一覧・詳細・出口条件チェックリスト・ステップ遷移として
-> ブラウザで動くこと。
+> ブラウザで動くこと。 → **達成**
 
-最小スコープなので、以下は**意図的に作らない**。手を広げないこと。
+最小スコープなので、以下は**意図的に作っていない**。ここから手を広げるときは、
+何のために広げるのかを先に決めること。
 
 | 作らないもの | 理由 |
 |---|---|
@@ -35,17 +36,19 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 | 1 | [定義層](impl/phase-1-definitions.md) | **済**（2026-08-06） |
 | 2 | [CLI](impl/phase-2-cli.md) | **済**（2026-08-06） |
 | 3 | [バックエンド](impl/phase-3-backend.md) | **済**（2026-08-06） |
-| 4 | [FE + 動作確認](impl/phase-4-frontend.md) | **← いまここ（未着手）** |
+| 4 | [FE + 動作確認](impl/phase-4-frontend.md) | **済**（2026-08-06） |
 
-**次に読むもの → [impl/phase-4-frontend.md](impl/phase-4-frontend.md)**
+**4フェーズすべて完了。ブラウザで営業フロー1本が動く。**
 
-フェーズ4 は概要と完了条件だけ書いてある。着手時に詳細化する。
+次は「ここまで来たら」に書いたとおり Go 版の計画（`condition-ast.md` §9-5）だが、
+**フェーズ4 で判断の材料が揃った未確定論点が2つある**ので、先にそちらを片付ける選択肢もある
+（[product-concept.md §8-2](product-concept.md) 論点9・論点12）。どちらも画面で見えた。
 
 ---
 
 ## すでに動いているもの
 
-`pnpm verify` が通る状態（232 テスト）。
+`pnpm verify` が通る状態（256 テスト）。
 
 | パッケージ | 中身 |
 |---|---|
@@ -54,11 +57,12 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 | `@alt/definitions` | **客先の定義そのもの**。テーブル5本（deal / company / contact / employee / activity）と営業フロー1本。出口条件8件（自動5・手動3） |
 | `@alt/cli` | **`alt` コマンド**。`validate`（3層19ルール）/ `apply`（SQLite にスキーマ）/ `export --out`（定義をJSONで）/ `seed`（開発用データ） |
 | `@alt/server` | **REST API**。定義レジストリ、ルート自動生成（**未バインドは 404**）、出口条件の一括評価、有効期間型の書き込み、ステップ遷移、認可4層 + `_permissions`、`X-Dev-User` 詐称 |
+| `@alt/main`（`apps/main`） | **エンドユーザーFE**（React + Vite）。シェル（ナビ・ルータ・APIクライアント・時点指定・開発用ユーザー切替）と営業フローの画面（案件一覧 / 詳細 = 現在地・出口条件チェックリスト・遷移・編集フォーム）。**ステップ名と順序は定義を値として import** |
 | `testdata/condition-eval/` | 言語非依存の適合テスト6件。実SQLiteで評価される |
 
-**営業フロー1本が API として動く**ところまで来た。案件の一覧・詳細に現在ステップと出口条件の
-チェックリストが乗り、更新はバージョンとして積まれ、`as_of` で過去が読め、担当者でなければ
-書き込みが 403 になる。まだ無いもの: **FE**。
+**営業フロー1本がブラウザで動く**ところまで来た。案件の一覧・詳細に現在ステップと出口条件の
+チェックリストが出て、**データを直すと自動判定が勝手に充足に変わり**、未充足でも進めるが記録に残り、
+`as_of` で過去が読め、担当者でなければ編集ボタンが出ない。
 
 開発は Docker 内で行う。
 
@@ -71,6 +75,7 @@ docker compose exec dev pnpm alt apply --recreate            # SQLite にスキ�
 docker compose exec dev pnpm alt export --out data/definitions.json  # サーバーが読む形で書き出す
 docker compose exec dev pnpm alt seed --reset    # デモデータ
 docker compose exec -d dev pnpm serve            # API（ホストからは localhost:3100）
+docker compose exec -d dev pnpm dev              # FE （ホストからは localhost:5273）
 
 curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
 ```
@@ -84,7 +89,9 @@ curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
 - **パッケージを追加したら4箇所**（compose の匿名ボリューム / `tsconfig.json` の `paths` /
   `vite.config.ts` の `resolve.alias` / `tsx` 起動の `--tsconfig`）。**覚えなくてよい** —
   verify 先頭の `check:wiring`（`scripts/check-wiring.mjs`）が4つとも検知して落とす。
-  2〜4 はどれも「`dist/` の古い成果物を読んだまま通る」形で壊れるので、機械で塞いである
+  2〜4 はどれも「`dist/` の古い成果物を読んだまま通る」形で壊れるので、機械で塞いである。
+  alias は**最寄りの `vite.config.ts` が読まれる**ので、`apps/*` のように自前の設定を持つ
+  パッケージはルートではなくそちらに書く（フェーズ4で判明）
 - **`package.json` を編集したら `pnpm install` は hook が自動で流す**（`.claude/hooks/`）
 - **コンテナ内で使い捨てスクリプトを走らせるとき**は置き場に注意（CLAUDE.md「開発環境」参照）。
   scratchpad は見えず、`/app` 直下は依存を解決できない

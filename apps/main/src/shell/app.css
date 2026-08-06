@@ -1,0 +1,470 @@
+/*
+ * 共通シェルの見た目。CSS フレームワークは入れない。
+ * PC中心（docs/product-concept.md §4-3）。スマホは画面が壊れない程度に留める。
+ */
+
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --line: #d9dde3;
+  --text: #1d2430;
+  --muted: #6b7480;
+  --accent: #1f6feb;
+  --ok: #1a7f45;
+  --warn: #a2601a;
+  --error: #b3261e;
+  --dev: #7b3fb8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Hiragino Sans',
+    'Noto Sans JP',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--accent);
+}
+
+button {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  color: #fff;
+  filter: brightness(1.1);
+}
+
+input,
+select,
+textarea {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+/* --- シェル ------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-flow {
+  color: var(--muted);
+}
+
+.app-spacer {
+  flex: 1;
+}
+
+.app-asof,
+.app-user {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-nav a {
+  padding: 8px 12px;
+  text-decoration: none;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+
+.app-nav a.current {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.app-main {
+  padding: 20px;
+  max-width: 1100px;
+}
+
+.app-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-banner-info {
+  background: #eef4ff;
+  color: #1b3f7a;
+}
+
+.app-banner-error {
+  background: #fdeceb;
+  color: var(--error);
+}
+
+.app-banner-hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+/* --- 共通の小物 --------------------------------------------------------- */
+
+.muted {
+  color: var(--muted);
+}
+
+.loading,
+.empty {
+  color: var(--muted);
+}
+
+.num {
+  text-align: right;
+}
+
+.unmet {
+  color: var(--warn);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.badge-step {
+  background: #e8eefb;
+  color: #1b3f7a;
+}
+
+.badge-auto {
+  background: #e7f3ec;
+  color: var(--ok);
+}
+
+.badge-manual {
+  background: #f2eef8;
+  color: var(--dev);
+}
+
+.badge-dev {
+  background: #f2eef8;
+  color: var(--dev);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f0f2f5;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* --- 案件詳細 ----------------------------------------------------------- */
+
+.crumb {
+  margin: 0 0 12px;
+}
+
+.deal-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.deal-head p {
+  margin: 2px 0 16px;
+}
+
+.flow-panel,
+.deal-body {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.section-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.section-head h3 {
+  margin: 0;
+  flex: 1;
+}
+
+/* --- 現在地 ------------------------------------------------------------- */
+
+.step-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  align-items: flex-start;
+}
+
+.lane-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.lane-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lane-outcome .lane-steps {
+  gap: 16px;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 88px;
+  color: var(--muted);
+}
+
+/* 進行レーンだけ線でつなぐ。決着レーンは並列の選択肢なので繋がない */
+.lane:not(.lane-outcome) .step:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+}
+
+.dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+}
+
+.step.current {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.step.current .dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px #dce7fb;
+}
+
+.step-name {
+  margin-top: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.step-here {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+}
+
+.step-here .muted {
+  margin-left: 6px;
+}
+
+/* --- 出口条件 ----------------------------------------------------------- */
+
+.exit-checklist {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.exit-checklist h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.exit-checklist ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exit-checklist li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.exit-checklist li.unsatisfied .exit-label {
+  color: var(--warn);
+}
+
+.exit-checklist .check {
+  width: 1.2em;
+}
+
+.exit-manual {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.entered-unmet {
+  margin: 10px 0 0;
+  color: var(--warn);
+}
+
+/* --- 遷移 --------------------------------------------------------------- */
+
+.advance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.advance.confirm {
+  background: #fff8ec;
+  border: 1px solid #e9d6b4;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.advance.confirm p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* --- 事実の一覧とフォーム ------------------------------------------------ */
+
+.facts,
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 20px;
+  margin: 12px 0 0;
+}
+
+.fact.wide,
+.field.wide {
+  grid-column: 1 / -1;
+}
+
+.fact dt,
+.field-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fact dd {
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.activity-list tr.scheduled td {
+  background: #fbfbf4;
+}
+
+.deal-version {
+  color: var(--muted);
+}

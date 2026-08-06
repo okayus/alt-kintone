@@ -10,8 +10,10 @@
 //        ディレクトリで覆い隠すため。忘れると「コンテナ内で依存が消える」
 //   2. 各パッケージの tsconfig.json の paths
 //        prebuild なしで typecheck するため。忘れると tsc が dist/ を見る
-//   3. ルート vite.config.ts の resolve.alias
-//        vitest 用。**忘れると dist/ の古い成果物でテストが通る**（一番たちが悪い）
+//   3. vite.config.ts の resolve.alias
+//        vitest と dev サーバー用。**忘れると dist/ の古い成果物でテストが通る**（一番たちが悪い）
+//        packages/* はルートの vite.config.ts を読む。自前の vite.config.ts を持つ
+//        パッケージ（apps/*）はそちらが読まれるので、依存の alias もそちらに要る
 //   4. ルート package.json の tsx 起動に --tsconfig
 //        2 の paths を実行時にも効かせるため。忘れると alt が dist/ を読む
 //
@@ -138,14 +140,16 @@ for (const pkg of packages) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. ルート vite.config.ts の resolve.alias
+// 3. vite.config.ts の resolve.alias
 // ---------------------------------------------------------------------------
 
 {
-  const config = read('vite.config.ts')
-  // `'@alt/xxx': source('xxx'),` の形だけを見る
-  const declared = [...config.matchAll(/['"](@alt\/[\w-]+)['"]\s*:/g)].map((m) => m[1])
-  const missing = packages.map((p) => p.name).filter((name) => !declared.includes(name))
+  const declared = aliasesIn(read('vite.config.ts'))
+
+  // ルートが面倒を見るのは packages/* だけ。apps/* は誰からも import されないので
+  // 自分の名前の alias は要らず、代わりに自分の vite.config.ts が読まれる（下）。
+  const required = packages.filter((p) => p.dir.startsWith('packages/')).map((p) => p.name)
+  const missing = required.filter((name) => !declared.includes(name))
   const stale = declared.filter((name) => !packages.some((p) => p.name === name))
 
   if (missing.length > 0) {
@@ -160,6 +164,26 @@ for (const pkg of packages) {
   }
   if (stale.length > 0) {
     notes.push(`vite.config.ts: 対応する workspace パッケージが無い alias があります: ${stale.join(', ')}`)
+  }
+
+  // 自前の vite.config.ts を持つパッケージは、そちらが最寄りの設定として読まれる。
+  // ルートに書いてあっても効かないので、依存の alias はこちらに要る。
+  for (const pkg of packages) {
+    const file = join(pkg.dir, 'vite.config.ts')
+    if (!existsSync(join(root, file))) continue
+
+    const own = aliasesIn(read(pkg.dir, 'vite.config.ts'))
+    const lacking = pkg.deps.filter((dep) => !own.includes(dep))
+    if (lacking.length === 0) continue
+
+    problems.push(
+      `${file}: resolve.alias に workspace 依存が足りません: ${lacking.join(', ')}\n` +
+        'このパッケージは自前の vite.config.ts を持つので、ルートの alias は効きません。\n' +
+        'このままだと dev サーバーもテストも dist/ の古い成果物を読みます。\n' +
+        lacking
+          .map((dep) => `      '${dep}': source('${dep.replace('@alt/', '')}'),`)
+          .join('\n'),
+    )
   }
 }
 
@@ -207,6 +231,11 @@ function pathsIn(source, file) {
     )
     return undefined
   }
+}
+
+/** vite.config.ts の resolve.alias のキーを拾う。`'@alt/xxx': source('xxx'),` の形だけを見る。 */
+function aliasesIn(source) {
+  return [...source.matchAll(/['"](@alt\/[\w-]+)['"]\s*:/g)].map((m) => m[1])
 }
 
 function scriptName() {

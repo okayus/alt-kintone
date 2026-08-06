@@ -7,13 +7,13 @@
 ## 状況サマリ（最終更新: 2026-08-06）
 
 - リポジトリ: https://github.com/okayus/alt-kintone （private）
-- フェーズ: **実装**（構想・設計は決着済み。ブラウザで動作確認できる最小スコープを構築中）
+- フェーズ: **実装（最小スコープ完了）**。構想・設計は決着済み
 - **実装セッションは `docs/implementation.md` から始める**（実装ハブ）
-- 現在地: **フェーズ3（バックエンド）完了 → フェーズ4（FE + 動作確認）が次**（全4フェーズ。`docs/impl/phase-*.md`）
-- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・rowFilter・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL・プラットフォームテーブル・有効期間型の読み書きSQL・方言）、`@alt/definitions`（テーブル5本＋営業フロー1本＋出口条件8件）、`@alt/cli`（`alt validate` / `apply` / `export` / `seed`）、`@alt/server`（REST API）、適合テスト6件。**232テスト通過**
-- **営業フロー1本が API として動く**。一覧に現在ステップと出口条件チェックリストと `_permissions` が乗り、更新はバージョンとして積まれ `as_of` で過去が読め、担当者でなければ 403。未バインドのテーブルは 404（＝バインドの強制が実装で効いている）
-  - `alt apply --recreate` → `alt export --out data/definitions.json` → `alt seed` → `pnpm serve`（ホストから `localhost:3100`）
-- 未着手: **FE（フェーズ4）**、クライアントヒアリング、提案書ドラフト
+- 現在地: **全4フェーズ完了（2026-08-06）。ブラウザで営業フロー1本が動く**（`docs/impl/phase-*.md`）
+- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・rowFilter・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL・プラットフォームテーブル・有効期間型の読み書きSQL・方言）、`@alt/definitions`（テーブル5本＋営業フロー1本＋出口条件8件）、`@alt/cli`（`alt validate` / `apply` / `export` / `seed`）、`@alt/server`（REST API）、**`@alt/main`（エンドユーザーFE。React + Vite）**、適合テスト6件。**256テスト通過**
+- **営業フロー1本がブラウザで動く**。案件一覧に現在ステップと未確認件数が出て、詳細に現在地・出口条件チェックリスト・遷移ボタン・編集フォームが並ぶ。**データを直すと自動判定が勝手に充足に変わる**（＝営業の入力負担を減らす、という構想の中核が実際に働いている）。未充足でも進めるが `_flow_state.unmet_checks` に残り、`as_of` で過去が読め、担当者でなければ編集ボタンが出ない
+  - `alt apply --recreate` → `alt export --out data/definitions.json` → `alt seed --reset` → `pnpm serve`（API: `localhost:3100`）→ `pnpm dev`（FE: `localhost:5273`）
+- 未着手: Go版バックエンド、クライアントヒアリング、提案書ドラフト
 - **要判断（残っているもの）**: 汎用の定義レジストリ+CLIを基盤として作るか、客先アプリの内部構造として実装するか（`product-concept.md` §10-1）。「客先アプリを作りながら共通部分を抽出」が現時点の推奨。※ フェーズ3で `employee` テーブルと `admin` ロールの名前がサーバの定数になっており（§8-2 論点13）、この判断に触れる箇所が1つ増えた
 
 ## 客先プロファイル
@@ -128,19 +128,19 @@
 
 - **pnpm workspace**（`packages/*`, `apps/*`）+ TypeScript 7.0.2 + `tsconfig.base.json`（strict, NodeNext）
 - **vite-plus (`vp`)** で pack / test / lint / fmt を統一。テストは vitest、lint は oxlint
-- パッケージ: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL。**Goに移植する部分**）、`@alt/definitions`（客先の定義そのもの。テーブル・営業フロー・ロール）、`@alt/cli`（`alt` コマンド）
+- パッケージ: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL。**Goに移植する部分**）、`@alt/definitions`（客先の定義そのもの。テーブル・営業フロー・ロール）、`@alt/cli`（`alt` コマンド）、`@alt/server`（REST API）、`@alt/main`（`apps/main`。エンドユーザーFE。React + Vite）
 - **`alt` の起動は `pnpm alt <cmd>`**（`tsx --tsconfig packages/cli/tsconfig.json` 経由）。**`--tsconfig` は必須** — 落とすと tsx が `paths` を見ず `dist/` の古い成果物を読む（vitest の alias と同じ罠）
 - **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:wiring → fmt:check → typecheck → lint → test をまとめて実行）
   - `check:wiring` は**パッケージ追加時の「4箇所」の追記漏れ**を機械検知する（下記）。`fmt:check` が前寄りなのは、整形ミスを40秒でなく2秒で返すため
   - フェーズの着手/完了は `/phase-start <N>` / `/phase-done <N>`（`docs/implementation.md` 参照）
   - `pnpm install` は compose の command が起動時に実行する
-  - **ポートはホスト側でずらしてある**: API = `3100`、FE dev サーバー = `5273`（ホストの3000/5173は別プロジェクトのコンテナが使用中のため）
+  - **ポートはホスト側でずらしてある**: API = `3100`（`pnpm serve`）、FE dev サーバー = `5273`（`pnpm dev`）。ホストの3000/5173は別プロジェクトのコンテナが使用中のため。**API と FE は別々に `exec -d` で上げる**（落ちたときにどちらが死んだか分かるように）
   - ⚠ **コンテナを作り直すと `node_modules` が空になることがある**（匿名ボリュームだけ新しくなっても pnpm が「Already up to date」と言って再リンクしない）。`ERR_MODULE_NOT_FOUND` が出たら `docker compose exec dev sh -c 'rm -f node_modules/.pnpm-workspace-state-v1.json node_modules/.package-map.json && pnpm install'`
   - **パッケージを追加したら `docker-compose.yml` の匿名ボリュームにも追記する**
 - **パッケージを追加したら4箇所**（`pnpm check:wiring` が全部を検知して落とす。手で覚えなくてよい）:
   1. `docker-compose.yml` の匿名ボリューム
   2. そのパッケージの `tsconfig.json` の `paths`（tsc用）
-  3. ルート `vite.config.ts` の `resolve.alias`（vitest用）
+  3. `vite.config.ts` の `resolve.alias`（vitest・dev サーバー用）。**最寄りの vite.config が読まれる**ので、`apps/*` のように自前の設定を持つパッケージはルートではなく**そちら**に書く
   4. ルート `package.json` の `tsx` 起動に `--tsconfig`
   - 2〜4 はすべて「`dist/` の古い成果物を読む」という同じ壊れ方をする。**prebuild 忘れに気づけないまま通ってしまう**のが厄介な点
 - **`package.json` / `pnpm-workspace.yaml` を編集したら `pnpm install` は自動で走る**（PostToolUse hook、`.claude/hooks/pnpm-install-on-manifest-change.sh`）。手で叩く必要はない。発火の証跡は `.claude/.hook-log`
@@ -171,26 +171,31 @@
 - **フェーズ1: 定義層**（2026-08-06）— プラットフォームテーブルのDDL（`_flow_state` / `_manual_check`）、フロー定義DSL、`@alt/definitions`（テーブル5本・営業フロー1本・出口条件7件）
 - **フェーズ2: CLI**（2026-08-06）— `@alt/cli`。`alt validate`（3層19ルール、エラーは論理キー＋直し方つき）・`alt apply`（SQLiteにスキーマ、`--recreate` 必須の破壊的変更ガード）・`alt export`（定義バンドルをJSON）
 - **フェーズ3: バックエンド**（2026-08-06）— `@alt/server`（`node:http`、フレームワーク無し）。定義レジストリ・ルート自動生成（未バインドは404）・出口条件の一括評価（一覧のクエリは件数によらず3本）・有効期間型の書き込み（閉じてINSERT、`as_of`）・ステップ遷移（未充足でも進めて `_flow_state.unmet_checks` に記録、管理者の強制遷移）・認可4層と `_permissions`・`X-Dev-User` 詐称。`alt seed` と `alt export --out` も追加
+- **フェーズ4: FE + 動作確認**（2026-08-06）— `apps/main`（`@alt/main`。React + Vite、ルータ・状態管理・CSSフレームワーク無し）。共通シェル（ナビ・ハッシュルータ・APIクライアント・時点指定・開発用ユーザー切替）+ 営業フローの画面（案件一覧 / 詳細）。**ステップ名と順序は `@alt/definitions` を値として import**（乖離しない）。完了条件6件をブラウザで検証済み
 
-### いま進める（実装）
+### 次に進めるもの
 
 **→ `docs/implementation.md` を読む。それが実装セッションのハブ。**
 
-ブラウザで動作確認できる最小スコープを4フェーズで作る。現在地は**フェーズ4（FE + 動作確認、未着手）**。
-各フェーズの詳細は `docs/impl/phase-*.md` にあり、**着手するフェーズだけ読む**（完了したものと先のものは読まない）。
+最小スコープ（4フェーズ）は完了。次の候補は3つあり、**どれから着手するかは未決定**:
 
-実装前に決めるべき設計判断はすべて決着済み:
+1. **§8-2 論点12（優先度を上げた）** — マネージャーがフローに参加できず、画面で一覧が丸ごと403になる。「操作しないが見る」立場を定義でどう表現するか（`viewers` を足す／ステップを作る／ロール階層）
+2. **§8-2 論点9（材料が揃った）** — ステップを `won` に進めても `deal.status` は `open` のままで、画面に「状態 進行中」と出る。どちらを正にするか決める
+3. **Go版バックエンドの計画**（`condition-ast.md` §9-5）。`testdata/condition-eval/` の同じケースを Go で流すのが最初の一歩
+
+実装で効いている決定（変えるときは影響が広い）:
 - API は **REST 自動生成**（GraphQL/gRPC は動的スキーマと相性が悪い）
 - 現在ステップは **`_flow_state` テーブル**（レコード×フローの *関係* として持つ。業務テーブルの列にしない ＝ kintone と同じ構造を避ける）
 - 手動チェックは **`_manual_check`、明示キーで識別**（ラベルをキーにすると文言修正でチェックが外れる）
 - フローの対象は **`flow({ target })` で明示**（`primary` バインド＝所有 とは別の軸）、起点は `initial`
-- **enum の値は英語キー**。表示ラベルは `domain-model.md` §5-0 の対応表に分離
+- **enum の値は英語キー**。表示ラベルは `domain-model.md` §5-0 の対応表に分離（＝定義に無いのでFEが手書きする。§8-2 論点14）
 - **CLI は客先定義を静的 import する**（`packages/cli/src/bundle.ts` 1箇所に閉じる）。任意パスの実行時ロードは持たない
 - **定義のルールの置き場は `alt validate` 1箇所**。定義パッケージのテストには定義集合固有の前提だけ残す
 - 終端ステップの出口条件は **`next` が空なら免除**（フェーズ2で決着。保留ステップには手動チェックを足した）
+- **FEは定義を値として import してよい**（フェーズ4）。「定義はFEに対しては初期生成の入力」は一律ではなく、機械的に描ける部分は読み続けてよい
 
-未決着の要検討（`product-concept.md` §8-2 論点7・9・11・12・13）:
-決着ステップと `deal.status` の二重管理（フェーズ3でも解いていない。遷移は status を書かない）/ **いま誰もマスタを更新できない**（`company`・`contact` が reference のみ。`alt seed` は開発用の裏口であって答えではない）/ 条件式AST の構文エラーの出し方 / **ステップを担当しないロール（`sales_manager`）はフローに参加できず案件を1件も読めない** / **プラットフォームが客先定義の名前（`employee` テーブル・`admin` ロール）を直に知っている**
+未決着の要検討（`product-concept.md` §8-2 論点7・9・11・12・13・14・15）:
+**ステップを担当しないロール（`sales_manager`）はフローに参加できず案件を1件も読めない**（論点12、優先度＝高）/ 決着ステップと `deal.status` の二重管理（論点9、判断材料は揃った）/ **いま誰もマスタを更新できない**（`company`・`contact` が reference のみ。`alt seed` は開発用の裏口であって答えではない）/ 条件式AST の構文エラーの出し方 / **プラットフォームが客先定義の名前（`employee` テーブル・`admin` ロール）を直に知っている** / **enum の表示ラベルが定義に無くFEが二重管理**（論点14）/ **`table()` の型消去でFEのレコード型を導出できない**（論点15。§5-6 の約束が現状は成立していない）
 
 ### 客先提案（プロトタイプと並行 or 後）
 

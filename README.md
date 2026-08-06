@@ -24,6 +24,7 @@ packages/sql          @alt/sql — AST → SQL 変換と DDL（SQLite方言）�
 packages/definitions  @alt/definitions — 客先の定義そのもの（テーブル5本・営業フロー1本）
 packages/cli          @alt/cli — `alt` コマンド（validate / apply / export / seed）
 packages/server       @alt/server — REST API。定義（JSON）からルート・認可・出口条件を生やす
+apps/main             @alt/main — エンドユーザーFE（React + Vite）。業務フローが画面に現れる場所
 ```
 
 **言語構成**（[docs/product-concept.md §4-0](docs/product-concept.md)）:
@@ -31,7 +32,7 @@ packages/server       @alt/server — REST API。定義（JSON）からルート
 TS版バックエンドは仕様であり、Go版完成後は実装を捨てて
 **言語非依存のテストケースだけを資産として残す**。TS実装に投資しすぎないこと。
 
-今後増える予定: エンドユーザーFE、管理画面FE。
+今後増える予定: 管理画面FE。
 
 ## 開発（Docker）
 
@@ -81,6 +82,7 @@ pnpm typecheck
 | `pnpm fmt` | oxfmt（`vp fmt`） |
 | `pnpm alt <cmd>` | `alt` コマンド（下記） |
 | `pnpm serve` | API サーバーを起動（`localhost:3100`。下記） |
+| `pnpm dev` | FE の dev サーバーを起動（`localhost:5273`。下記） |
 
 ### `alt` コマンド
 
@@ -119,6 +121,25 @@ curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
 
 差分適用は持たない。既存テーブルがあるときに `--recreate` を求めるのは、黙ってデータを消さないため。
 
+### エンドユーザーFE
+
+```sh
+docker compose exec -d dev pnpm serve      # API を先に（localhost:3100）
+docker compose exec -d dev pnpm dev        # FE（localhost:5273）
+```
+
+API と FE は別々に上げる（落ちたときにどちらが死んだか分かるように）。
+FE は `/api` を同じコンテナ内の API に proxy するので、CORS は要らない。
+
+- **ステップ名と順序は `@alt/definitions` から値として import している**。定義を変えると
+  画面が追随する（[docs/impl/phase-4-frontend.md](docs/impl/phase-4-frontend.md) 決定B）
+- 画面右上のプルダウンで `X-Dev-User` を切り替える（**開発用。本番ビルドには含めない**）。
+  `鈴木 一郎（営業マネージャー）` を選ぶと 403 になるが、これは仕様どおりで
+  [§8-2 論点12](docs/product-concept.md) がそのまま画面に出ている
+- 「時点」に日時を入れると `as_of` で過去のバージョンが読める（読み取り専用になる）
+- enum の**表示ラベルは定義に無い**ので `apps/main/src/flows/sales/labels.ts` に手書きしてある
+  （[§8-2 論点14](docs/product-concept.md)）
+
 ### パッケージを追加したときの「4箇所」
 
 `typecheck` / `test` / `alt` は **prebuild を必要としない**。パッケージ間の参照がソースを直接指すよう、
@@ -129,7 +150,7 @@ curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
 |---|---|---|
 | 1 | コンテナ内の依存 | `docker-compose.yml` の匿名ボリューム |
 | 2 | typecheck（tsc） | そのパッケージの `tsconfig.json` の `paths` |
-| 3 | test（vitest） | ルート `vite.config.ts` の `resolve.alias` |
+| 3 | test（vitest）と dev サーバー | `vite.config.ts` の `resolve.alias`。`packages/*` はルート、**自前の `vite.config.ts` を持つ `apps/*` はそちら**（最寄りの設定が読まれるので、ルートに書いても効かない） |
 | 4 | `alt` の実行時 | ルート `package.json` の `tsx` 起動に `--tsconfig`（2 を実行時にも効かせる） |
 
 覚えておく必要はない。**`pnpm check:wiring`（`verify` の先頭）が4つとも検知して落とす。**

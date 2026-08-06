@@ -14,3 +14,6 @@ packages/*/src/*.d.ts
 .claude/settings.local.json
 # PostToolUse hook の発火証跡（.claude/hooks/pnpm-install-on-manifest-change.sh）
 .claude/.hook-log
+
+# Playwright MCP の作業用出力（スナップショット・スクリーンショット）
+.playwright-mcp/

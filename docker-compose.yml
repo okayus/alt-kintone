@@ -24,6 +24,7 @@ services:
       # ホスト側の（空の）ディレクトリで覆い隠すのを防ぐ。
       # パッケージを追加したらここにも足すこと。
       - /app/node_modules
+      - /app/apps/main/node_modules
       - /app/packages/cli/node_modules
       - /app/packages/definitions/node_modules
       - /app/packages/dsl/node_modules
@@ -35,7 +36,9 @@ services:
       DATABASE_URL: file:/app/data/alt.db
     init: true
     tty: true
-    # dev サーバーができたら `pnpm dev` に差し替える
+    # API と FE は別々に上げる（落ちたときにどちらが死んだか分かるように）。
+    #   docker compose exec -d dev pnpm serve   → localhost:3100
+    #   docker compose exec -d dev pnpm dev     → localhost:5273
     command: sh -c "pnpm install && tail -f /dev/null"
 
 volumes:
