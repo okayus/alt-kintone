@@ -4,7 +4,7 @@
  * 有効期間型（SCD Type 2）の列は定義に書かず、ここで全テーブルに自動付与する
  * （docs/product-concept.md §4-1）。定義側が意識しなくてよいのがこの方式の要点。
  */
-import type { FieldDef, FieldType, TableDef } from '@alt/dsl'
+import type { DefinitionBundle, FieldDef, FieldType, TableDef } from '@alt/dsl'
 import { toColumnName } from '@alt/dsl'
 import { type Dialect, sqlite } from './dialect.js'
 
@@ -130,11 +130,17 @@ export function platformTablesSql(dialect: Dialect = sqlite): string[] {
 
   // _flow_state は有効期間型。ステップ遷移の履歴がここに残り、
   // ステージ転換率（docs/sales-domain.md §14）がこれだけで出せる。
+  //
+  // unmet_checks は「未充足でも進めるが記録に残す」（docs/product-concept.md §4-3）の
+  // 保存先。**後から再評価しても遷移した時点の充足状況は復元できない**ので、
+  // 遷移時に確定させるしかない。直前ステップ（= 同じ行の changed_step）の
+  // 未充足キーを JSON 配列で持つ。これで「出口条件を満たさず進めた案件の受注率」が出せる。
   const flowState = [
     `${q('table_name')} TEXT NOT NULL`,
     `${q('record_id')} TEXT NOT NULL`,
     `${q('flow')} TEXT NOT NULL`,
     `${q('step')} TEXT NOT NULL`,
+    `${q('unmet_checks')} TEXT`,
     ...temporalColumns(q),
   ]
 
@@ -162,5 +168,23 @@ export function platformTablesSql(dialect: Dialect = sqlite): string[] {
     `CREATE TABLE ${q(MANUAL_CHECK_TABLE)} (\n  ${manualCheck.join(',\n  ')}\n)`,
     `CREATE UNIQUE INDEX ${q(`${MANUAL_CHECK_TABLE}_key`)} ON ${q(MANUAL_CHECK_TABLE)}` +
       ` (${['table_name', 'record_id', 'flow', 'step', 'check_key'].map(q).join(', ')})`,
+  ]
+}
+
+/**
+ * 定義バンドル全体のスキーマ。適用の順に並べる。
+ *
+ * プラットフォームテーブルが先。業務テーブルは定義ごとに CREATE TABLE と
+ * 現在行のユニーク索引の2本（有効期間型では id が重複するため索引が要る）。
+ *
+ * 純関数（DB を触らない）。`alt apply` とバックエンドのテストの両方が使う。
+ */
+export function schemaStatements(bundle: DefinitionBundle, dialect: Dialect = sqlite): string[] {
+  return [
+    ...platformTablesSql(dialect),
+    ...Object.values(bundle.tables).flatMap((table) => [
+      createTableSql(table, dialect),
+      currentRowIndexSql(table, dialect),
+    ]),
   ]
 }

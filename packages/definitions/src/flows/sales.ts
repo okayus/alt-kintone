@@ -9,7 +9,16 @@
  * 作らない（docs/impl/phase-1-definitions.md）。読みにくいが動く。書き味の改善は
  * ブラウザで動くものを見てから決める。
  */
-import { bind, check, flow, manualCheck, ROOT_SOURCE, step, type Pred } from '@alt/dsl'
+import {
+  bind,
+  check,
+  flow,
+  manualCheck,
+  ROOT_SOURCE,
+  step,
+  type Pred,
+  type RowFilter,
+} from '@alt/dsl'
 import { activity, company, contact, deal, employee } from '../tables/index.js'
 
 // ---------------------------------------------------------------------------
@@ -139,6 +148,24 @@ const closeMonthEntered: Pred = {
 }
 
 // ---------------------------------------------------------------------------
+// 行レベル認可
+//
+// 「読みは全員、書きは担当者＋管理者」（docs/product-concept.md §4-1）の担当者の部分。
+// 管理者のバイパスはロールで効くのでここには書かない。バインド先のテーブルが
+// ルートになるので、`source: 'root'` は deal / activity 自身を指す。
+// ---------------------------------------------------------------------------
+
+/** 自分が担当のレコードだけ書ける。 */
+const ownedByCurrentUser: RowFilter = {
+  write: {
+    type: 'compare',
+    op: 'eq',
+    left: { type: 'field', source: ROOT_SOURCE, path: ['ownerEmployeeId'] },
+    right: { type: 'context', name: 'currentUser.id' },
+  },
+}
+
+// ---------------------------------------------------------------------------
 // フロー
 // ---------------------------------------------------------------------------
 
@@ -229,8 +256,10 @@ export const sales = flow({
   // ここに書くのは導出できない role と purpose だけ。
   // employee は global: true なので宣言不要。実参照は導出の副産物として記録される（§3-4）。
   bindings: [
-    bind(deal, 'primary', '営業の主対象。ヨミ管理と予測の元データ'),
-    bind(activity, 'primary', '接触記録と次アクション'),
+    bind(deal, 'primary', '営業の主対象。ヨミ管理と予測の元データ', {
+      rowFilter: ownedByCurrentUser,
+    }),
+    bind(activity, 'primary', '接触記録と次アクション', { rowFilter: ownedByCurrentUser }),
     bind(company, 'reference', '商談相手の組織情報'),
     bind(contact, 'reference', '決裁者の特定と接触相手の記録'),
     // ※ store / contract は最小スコープでは定義していない（domain-model.md §6-1 では

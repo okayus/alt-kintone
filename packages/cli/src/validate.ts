@@ -14,6 +14,7 @@
 import {
   definitionBundleSchema,
   usedTables,
+  type BindingDef,
   type DefinitionBundle,
   type FlowDef,
   type StepDef,
@@ -227,14 +228,17 @@ function validateReferences(bundle: DefinitionBundle): ValidationError[] {
     }
 
     for (const binding of flow.bindings) {
-      if (bundle.tables[binding.table] !== undefined) continue
-      errors.push({
-        layer: 'reference',
-        rule: 'unknown-binding-table',
-        where: { flow: flow.key, binding: binding.table },
-        message: `bind() したテーブル "${binding.table}" が定義されていない`,
-        hint: `候補: ${candidates(tableNames)}`,
-      })
+      if (bundle.tables[binding.table] === undefined) {
+        errors.push({
+          layer: 'reference',
+          rule: 'unknown-binding-table',
+          where: { flow: flow.key, binding: binding.table },
+          message: `bind() したテーブル "${binding.table}" が定義されていない`,
+          hint: `候補: ${candidates(tableNames)}`,
+        })
+        continue
+      }
+      errors.push(...validateRowFilter(bundle, flow, binding))
     }
 
     for (const step of flow.steps) {
@@ -282,6 +286,42 @@ function validateReferences(bundle: DefinitionBundle): ValidationError[] {
   }
 
   return errors
+}
+
+/**
+ * 行レベル認可（`bind()` の rowFilter）の参照整合。
+ *
+ * 出口条件と同じく `compilePred` に通すだけ。ただし**ルートは `flow.target` ではなく
+ * バインド先のテーブル**。rowFilter は「そのテーブルのどの行に書けるか」なので、
+ * `source: 'root'` が指す先が出口条件と違う。
+ */
+function validateRowFilter(
+  bundle: DefinitionBundle,
+  flow: FlowDef,
+  binding: BindingDef,
+): ValidationError[] {
+  if (binding.rowFilter === undefined) return []
+  try {
+    compilePred(binding.rowFilter.write, {
+      registry: bundle.tables,
+      rootTable: binding.table,
+      rootAlias: 'r',
+      values: EMPTY_CONTEXT,
+    })
+    return []
+  } catch (error) {
+    return [
+      {
+        layer: 'reference',
+        rule: 'unresolved-row-filter',
+        where: { flow: flow.key, binding: binding.table },
+        message: `rowFilter.write を SQL に変換できない: ${error instanceof Error ? error.message : String(error)}`,
+        hint:
+          `rowFilter の source: "root" はバインド先のテーブル（${binding.table}）を指す。` +
+          '担当者を見るなら { type: "context", name: "currentUser.id" } と比較する',
+      },
+    ]
+  }
 }
 
 /**

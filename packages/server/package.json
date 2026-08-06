@@ -1,0 +1,32 @@
+{
+  "name": "@alt/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "vp pack src/index.ts --dts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vp test run",
+    "lint": "vp lint -c ../../.oxlintrc.json --deny-warnings",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check"
+  },
+  "dependencies": {
+    "@alt/dsl": "workspace:*",
+    "@alt/sql": "workspace:*",
+    "better-sqlite3": "^13.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@alt/definitions": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13"
+  }
+}

@@ -67,19 +67,43 @@ export function manualCheck(key: string, label: string): ManualCheck {
 export const BINDING_ROLES = ['primary', 'reference', 'master'] as const
 export type BindingRole = (typeof BINDING_ROLES)[number]
 
+/**
+ * 行レベル認可（docs/product-concept.md §4-1）。
+ *
+ * 専用の仕組みを作らず**条件式 DSL をそのまま再利用する**。`source: 'root'` は
+ * バインド先のテーブル（`BindingDef.table`）を指し、`currentUser.id` は
+ * 認証済みユーザーの ID にバインドされる。
+ *
+ * 書かなければ制限なし。owner を持たないマスタ類は自然に対象外になる。
+ * 読みの制限は持たない（「読みは全員、書きは担当者＋管理者」が確定事項）。
+ */
+export interface RowFilter {
+  /** 書き込みを許す行の条件。 */
+  write: Pred
+}
+
 export interface BindingDef {
   table: string
   role: BindingRole
   /** 何のために使うか。**必須**。バインディングを業務上の意味の記録にするため（§3-3）。 */
   purpose: string
+  rowFilter?: RowFilter
 }
 
 /**
  * 使用テーブルと `access` は書かない。ステップの reads / writes から導出する
  * （§3-3）。二重に書かせると書き漏れと矛盾が起きる。
  */
-export function bind(table: TableDef, role: BindingRole, purpose: string): BindingDef {
-  return { table: table.name, role, purpose }
+export function bind(
+  table: TableDef,
+  role: BindingRole,
+  purpose: string,
+  opts: { rowFilter?: RowFilter } = {},
+): BindingDef {
+  const binding: BindingDef = { table: table.name, role, purpose }
+  // 未指定のときはキーごと持たない（JSON にした形をそのまま契約にするため）
+  if (opts.rowFilter !== undefined) binding.rowFilter = opts.rowFilter
+  return binding
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +279,7 @@ export const bindingDefSchema: z.ZodType<BindingDef> = z.object({
   table: key,
   role: z.enum(BINDING_ROLES),
   purpose: z.string().min(1),
+  rowFilter: z.object({ write: predSchema }).optional(),
 })
 
 export const stepDefSchema: z.ZodType<StepDef> = z.object({

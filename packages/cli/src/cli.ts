@@ -9,7 +9,10 @@
  */
 import { apply, openDatabase, resolveDbPath } from './apply.js'
 import { loadBundle } from './bundle.js'
+import { seed } from './seed.js'
 import { validate, type ValidationError } from './validate.js'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { parseArgs, type ParseArgsConfig } from 'node:util'
 
 export interface Io {
@@ -32,8 +35,13 @@ const USAGE = `alt — alt-kintone の定義を検証し、適用する
       適用先: --db > 環境変数 DATABASE_URL > data/alt.db
       既存のテーブルがあるときは --recreate が要る（作り直し。データは失われる）
 
-  alt export [--json]
-      定義バンドルを JSON で標準出力に吐く（バックエンドへの受け渡し形）
+  alt export [--out <path>] [--json]
+      定義バンドルを JSON で吐く（バックエンドへの受け渡し形）
+      --out を付けるとファイルに書く。バックエンドはこれを起動時に読む
+
+  alt seed [--db <path>] [--reset] [--json]
+      開発用のデモデータを入れる。--reset で既存データを消してから入れる
+      ※ マスタ（company / contact / employee）は API から作れないための裏口
 
 終了コード: 0 成功 / 1 検証エラー・適用失敗 / 2 使い方の誤り`
 
@@ -50,6 +58,8 @@ export function run(argv: readonly string[], io: Io = consoleIo): number {
         return runApply(rest, io)
       case 'export':
         return runExport(rest, io)
+      case 'seed':
+        return runSeed(rest, io)
       case '--help':
       case '-h':
         io.out(USAGE)
@@ -118,8 +128,48 @@ function runApply(args: readonly string[], io: Io): number {
 
 function runExport(args: readonly string[], io: Io): number {
   // 出力そのものが JSON なので --json は受け付けるだけ（全コマンドが持つ約束のため）
-  options(args, { json: { type: 'boolean' } })
-  io.out(JSON.stringify(loadBundle(), null, 2))
+  const opts = options(args, { json: { type: 'boolean' }, out: { type: 'string' } })
+  const json = JSON.stringify(loadBundle(), null, 2)
+
+  const out = opts['out']
+  if (typeof out !== 'string') {
+    io.out(json)
+    return 0
+  }
+  // 標準出力へのリダイレクトに頼らない。pnpm run の出力が混ざる事故を避ける
+  mkdirSync(dirname(out), { recursive: true })
+  writeFileSync(out, `${json}\n`)
+  io.out(`✔ ${out} に定義を書き出した`)
+  return 0
+}
+
+function runSeed(args: readonly string[], io: Io): number {
+  const opts = options(args, {
+    json: { type: 'boolean' },
+    db: { type: 'string' },
+    reset: { type: 'boolean' },
+  })
+
+  const bundle = loadBundle()
+  const path = resolveDbPath(
+    typeof opts['db'] === 'string' ? opts['db'] : undefined,
+    process.env['DATABASE_URL'],
+  )
+  const db = openDatabase(path)
+  try {
+    const result = seed(db, bundle, { reset: opts['reset'] === true })
+    if (opts['json'] === true) {
+      io.out(JSON.stringify({ ok: true, db: path, ...result }, null, 2))
+    } else {
+      if (result.cleared) io.out('− 既存データを消した')
+      for (const [table, count] of Object.entries(result.inserted)) {
+        io.out(`＋ ${table}: ${count} 件`)
+      }
+      io.out(`✔ ${path} にデモデータを入れた`)
+    }
+  } finally {
+    db.close()
+  }
   return 0
 }
 

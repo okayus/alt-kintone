@@ -22,7 +22,8 @@ kintone が構造的に解けなかった問題を「アプリを作るのは人
 packages/dsl          @alt/dsl — 条件式AST・テーブル定義・フロー定義・ロール定義（zod）。TS と Go の契約
 packages/sql          @alt/sql — AST → SQL 変換と DDL（SQLite方言）。Go に移植する部分
 packages/definitions  @alt/definitions — 客先の定義そのもの（テーブル5本・営業フロー1本）
-packages/cli          @alt/cli — `alt` コマンド（validate / apply / export）
+packages/cli          @alt/cli — `alt` コマンド（validate / apply / export / seed）
+packages/server       @alt/server — REST API。定義（JSON）からルート・認可・出口条件を生やす
 ```
 
 **言語構成**（[docs/product-concept.md §4-0](docs/product-concept.md)）:
@@ -30,7 +31,7 @@ packages/cli          @alt/cli — `alt` コマンド（validate / apply / expor
 TS版バックエンドは仕様であり、Go版完成後は実装を捨てて
 **言語非依存のテストケースだけを資産として残す**。TS実装に投資しすぎないこと。
 
-今後増える予定: バックエンド、エンドユーザーFE、管理画面FE。
+今後増える予定: エンドユーザーFE、管理画面FE。
 
 ## 開発（Docker）
 
@@ -48,9 +49,16 @@ docker compose exec dev pnpm verify    # check:wiring → fmt:check → typechec
 （**パッケージを追加したら `docker-compose.yml` の volumes にも追記すること**。
 忘れても `pnpm verify` 先頭の整合チェックが検知して落ちる）。
 
-**ポートは公開していない。** まだサーバーが無く、ホストの 3000 / 5173 は別プロジェクトの
-コンテナが使っているため。API と FE を作るときに空いているポートを選んで
-`docker-compose.yml` に追加する。
+**ポートはホスト側でずらしてある**（3000 / 5173 は別プロジェクトのコンテナが使っているため）。
+API は `localhost:3100`、FE の dev サーバーは `localhost:5273` になる。
+
+> ⚠ **コンテナを作り直したあと（ポート追加など）は `node_modules` が空になることがある。**
+> 匿名ボリュームだけが新しくなっても pnpm は「Already up to date」と言って再リンクしないため。
+> `ERR_MODULE_NOT_FOUND` が出たら:
+>
+> ```sh
+> docker compose exec dev sh -c 'rm -f node_modules/.pnpm-workspace-state-v1.json node_modules/.package-map.json && pnpm install'
+> ```
 
 ## 開発（Docker なし）
 
@@ -72,6 +80,7 @@ pnpm typecheck
 | `pnpm lint` | oxlint（`vp lint`） |
 | `pnpm fmt` | oxfmt（`vp fmt`） |
 | `pnpm alt <cmd>` | `alt` コマンド（下記） |
+| `pnpm serve` | API サーバーを起動（`localhost:3100`。下記） |
 
 ### `alt` コマンド
 
@@ -80,11 +89,33 @@ pnpm typecheck
 ```sh
 docker compose exec dev pnpm alt validate          # 3層（構文 / 参照整合 / 業務ルール）で検証
 docker compose exec dev pnpm alt apply --recreate  # SQLite にスキーマを作る
-docker compose exec dev pnpm alt export            # 定義バンドルを JSON で吐く
+docker compose exec dev pnpm alt export --out data/definitions.json  # サーバーが読む形で書き出す
+docker compose exec dev pnpm alt seed --reset      # 開発用のデモデータを入れる
 ```
 
 全コマンドに `--json`（AIが構造化して読めるように）。終了コードは 0 成功 / 1 検証エラー・適用失敗 /
 2 使い方の誤り。適用先は `--db` > 環境変数 `DATABASE_URL` > `data/alt.db`。
+
+`alt seed` は開発用の裏口。`company` / `contact` / `employee` は営業フローの reference バインド
+（読むだけ）なので**書き込み API が生えず**、API 経由では入れられない。
+
+### API サーバー
+
+```sh
+docker compose exec dev pnpm alt apply --recreate
+docker compose exec dev pnpm alt export --out data/definitions.json
+docker compose exec dev pnpm alt seed --reset
+docker compose exec -d dev pnpm serve      # localhost:3100
+
+curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
+```
+
+- **ルートは定義から生える。** バインドされていないテーブルは 404、読むだけのテーブルは
+  書き込みが 403（[docs/product-concept.md §3-2](docs/product-concept.md)）
+- 認証は実装していない。`X-Dev-User` に `employee.email` を入れて詐称する
+  （**開発用。本番ビルドにはコードごと含めない**）
+- 定義は起動時に `data/definitions.json` を読む（`ALT_DEFINITIONS` で変えられる）。
+  定義を変えたら `alt export --out` を流し直して再起動する
 
 差分適用は持たない。既存テーブルがあるときに `--recreate` を求めるのは、黙ってデータを消さないため。
 

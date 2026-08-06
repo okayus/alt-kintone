@@ -9,14 +9,7 @@
  * DDL 生成そのものは `@alt/sql` にある。ここがやるのは並べて流すことだけ。
  */
 import type { DefinitionBundle } from '@alt/dsl'
-import {
-  createTableSql,
-  currentRowIndexSql,
-  FLOW_STATE_TABLE,
-  MANUAL_CHECK_TABLE,
-  platformTablesSql,
-  sqlite,
-} from '@alt/sql'
+import { FLOW_STATE_TABLE, MANUAL_CHECK_TABLE, schemaStatements, sqlite } from '@alt/sql'
 import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -32,22 +25,6 @@ export const DEFAULT_DB_PATH = 'data/alt.db'
  */
 export function managedTables(bundle: DefinitionBundle): string[] {
   return [FLOW_STATE_TABLE, MANUAL_CHECK_TABLE, ...Object.keys(bundle.tables)]
-}
-
-/**
- * 流す DDL を並べる。純関数（DB を触らない）なので単体でテストできる。
- *
- * プラットフォームテーブルが先。業務テーブルは定義ごとに CREATE TABLE と
- * 現在行のユニーク索引の2本（有効期間型では id が重複するため索引が要る）。
- */
-export function schemaStatements(bundle: DefinitionBundle): string[] {
-  return [
-    ...platformTablesSql(),
-    ...Object.values(bundle.tables).flatMap((table) => [
-      createTableSql(table),
-      currentRowIndexSql(table),
-    ]),
-  ]
 }
 
 export interface ApplyResult {

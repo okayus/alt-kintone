@@ -58,6 +58,28 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/server:
+    dependencies:
+      '@alt/dsl':
+        specifier: workspace:*
+        version: link:../dsl
+      '@alt/sql':
+        specifier: workspace:*
+        version: link:../sql
+      better-sqlite3:
+        specifier: ^13.0.2
+        version: 13.0.2
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@alt/definitions':
+        specifier: workspace:*
+        version: link:../definitions
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+
   packages/sql:
     dependencies:
       '@alt/dsl':

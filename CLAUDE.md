@@ -9,11 +9,12 @@
 - リポジトリ: https://github.com/okayus/alt-kintone （private）
 - フェーズ: **実装**（構想・設計は決着済み。ブラウザで動作確認できる最小スコープを構築中）
 - **実装セッションは `docs/implementation.md` から始める**（実装ハブ）
-- 現在地: **フェーズ2（CLI）完了 → フェーズ3（バックエンド）が次**（全4フェーズ。`docs/impl/phase-*.md`）
-- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL・プラットフォームテーブル・方言）、`@alt/definitions`（テーブル5本＋営業フロー1本＋出口条件8件）、`@alt/cli`（`alt validate` / `apply` / `export`）、適合テスト6件。**132テスト通過**
-- **ローカルのSQLiteに実スキーマが作れる**（業務5本＋プラットフォーム2本、有効期間型の列と現在行のユニーク索引つき）。`docker compose exec dev pnpm alt apply --recreate`
-- 未着手: バックエンド・FE（フェーズ3〜4）、クライアントヒアリング、提案書ドラフト
-- **要判断（残っているもの）**: 汎用の定義レジストリ+CLIを基盤として作るか、客先アプリの内部構造として実装するか（`product-concept.md` §10-1）。「客先アプリを作りながら共通部分を抽出」が現時点の推奨
+- 現在地: **フェーズ3（バックエンド）完了 → フェーズ4（FE + 動作確認）が次**（全4フェーズ。`docs/impl/phase-*.md`）
+- 動いているもの: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・rowFilter・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL・プラットフォームテーブル・有効期間型の読み書きSQL・方言）、`@alt/definitions`（テーブル5本＋営業フロー1本＋出口条件8件）、`@alt/cli`（`alt validate` / `apply` / `export` / `seed`）、`@alt/server`（REST API）、適合テスト6件。**232テスト通過**
+- **営業フロー1本が API として動く**。一覧に現在ステップと出口条件チェックリストと `_permissions` が乗り、更新はバージョンとして積まれ `as_of` で過去が読め、担当者でなければ 403。未バインドのテーブルは 404（＝バインドの強制が実装で効いている）
+  - `alt apply --recreate` → `alt export --out data/definitions.json` → `alt seed` → `pnpm serve`（ホストから `localhost:3100`）
+- 未着手: **FE（フェーズ4）**、クライアントヒアリング、提案書ドラフト
+- **要判断（残っているもの）**: 汎用の定義レジストリ+CLIを基盤として作るか、客先アプリの内部構造として実装するか（`product-concept.md` §10-1）。「客先アプリを作りながら共通部分を抽出」が現時点の推奨。※ フェーズ3で `employee` テーブルと `admin` ロールの名前がサーバの定数になっており（§8-2 論点13）、この判断に触れる箇所が1つ増えた
 
 ## 客先プロファイル
 
@@ -133,7 +134,8 @@
   - `check:wiring` は**パッケージ追加時の「4箇所」の追記漏れ**を機械検知する（下記）。`fmt:check` が前寄りなのは、整形ミスを40秒でなく2秒で返すため
   - フェーズの着手/完了は `/phase-start <N>` / `/phase-done <N>`（`docs/implementation.md` 参照）
   - `pnpm install` は compose の command が起動時に実行する
-  - **ポートは未公開**（サーバーがまだ無く、ホストの3000/5173は別プロジェクトのコンテナが使用中）
+  - **ポートはホスト側でずらしてある**: API = `3100`、FE dev サーバー = `5273`（ホストの3000/5173は別プロジェクトのコンテナが使用中のため）
+  - ⚠ **コンテナを作り直すと `node_modules` が空になることがある**（匿名ボリュームだけ新しくなっても pnpm が「Already up to date」と言って再リンクしない）。`ERR_MODULE_NOT_FOUND` が出たら `docker compose exec dev sh -c 'rm -f node_modules/.pnpm-workspace-state-v1.json node_modules/.package-map.json && pnpm install'`
   - **パッケージを追加したら `docker-compose.yml` の匿名ボリュームにも追記する**
 - **パッケージを追加したら4箇所**（`pnpm check:wiring` が全部を検知して落とす。手で覚えなくてよい）:
   1. `docker-compose.yml` の匿名ボリューム
@@ -167,13 +169,14 @@
 - 開発環境の構築（Docker + pnpm workspace + vite-plus）
 - **条件式ASTの実装**（`@alt/dsl`）、テーブル定義と外部キー解決、**SQL変換**（`@alt/sql`）、実SQLiteで動く適合テスト6件
 - **フェーズ1: 定義層**（2026-08-06）— プラットフォームテーブルのDDL（`_flow_state` / `_manual_check`）、フロー定義DSL、`@alt/definitions`（テーブル5本・営業フロー1本・出口条件7件）
-- **フェーズ2: CLI**（2026-08-06）— `@alt/cli`。`alt validate`（3層18ルール、エラーは論理キー＋直し方つき）・`alt apply`（SQLiteにスキーマ、`--recreate` 必須の破壊的変更ガード）・`alt export`（定義バンドルをJSON）
+- **フェーズ2: CLI**（2026-08-06）— `@alt/cli`。`alt validate`（3層19ルール、エラーは論理キー＋直し方つき）・`alt apply`（SQLiteにスキーマ、`--recreate` 必須の破壊的変更ガード）・`alt export`（定義バンドルをJSON）
+- **フェーズ3: バックエンド**（2026-08-06）— `@alt/server`（`node:http`、フレームワーク無し）。定義レジストリ・ルート自動生成（未バインドは404）・出口条件の一括評価（一覧のクエリは件数によらず3本）・有効期間型の書き込み（閉じてINSERT、`as_of`）・ステップ遷移（未充足でも進めて `_flow_state.unmet_checks` に記録、管理者の強制遷移）・認可4層と `_permissions`・`X-Dev-User` 詐称。`alt seed` と `alt export --out` も追加
 
 ### いま進める（実装）
 
 **→ `docs/implementation.md` を読む。それが実装セッションのハブ。**
 
-ブラウザで動作確認できる最小スコープを4フェーズで作る。現在地は**フェーズ3（バックエンド、未着手）**。
+ブラウザで動作確認できる最小スコープを4フェーズで作る。現在地は**フェーズ4（FE + 動作確認、未着手）**。
 各フェーズの詳細は `docs/impl/phase-*.md` にあり、**着手するフェーズだけ読む**（完了したものと先のものは読まない）。
 
 実装前に決めるべき設計判断はすべて決着済み:
@@ -186,8 +189,8 @@
 - **定義のルールの置き場は `alt validate` 1箇所**。定義パッケージのテストには定義集合固有の前提だけ残す
 - 終端ステップの出口条件は **`next` が空なら免除**（フェーズ2で決着。保留ステップには手動チェックを足した）
 
-未決着の要検討（`product-concept.md` §8-2 論点7・9・11）:
-決着ステップと `deal.status` の二重管理 / **いま誰もマスタを更新できない**（`company`・`contact` が reference のみ）/ 条件式AST の構文エラーの出し方（zod の union が候補ごとに全部返る）
+未決着の要検討（`product-concept.md` §8-2 論点7・9・11・12・13）:
+決着ステップと `deal.status` の二重管理（フェーズ3でも解いていない。遷移は status を書かない）/ **いま誰もマスタを更新できない**（`company`・`contact` が reference のみ。`alt seed` は開発用の裏口であって答えではない）/ 条件式AST の構文エラーの出し方 / **ステップを担当しないロール（`sales_manager`）はフローに参加できず案件を1件も読めない** / **プラットフォームが客先定義の名前（`employee` テーブル・`admin` ロール）を直に知っている**
 
 ### 客先提案（プロトタイプと並行 or 後）
 

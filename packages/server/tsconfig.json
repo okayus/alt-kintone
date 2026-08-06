@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // packages/sql と同じ理由（下の paths が rootDir の外を指すため TS6059 が出る）。
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      // prebuild なしで typecheck できるようソースを直接指す。
+      // この paths は `pnpm serve` の**実行時**にも効く（ルート package.json が
+      // `tsx --tsconfig packages/server/tsconfig.json` を渡している）。
+      "@alt/dsl": ["../../packages/dsl/src/index.ts"],
+      "@alt/sql": ["../../packages/sql/src/index.ts"],
+      // 実行時には使わない。テストが営業フローそのもので検証するためだけの依存
+      // （サーバは定義を JSON で受け取る。docs/impl/phase-3-backend.md 決定B）。
+      "@alt/definitions": ["../../packages/definitions/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist"]
+}

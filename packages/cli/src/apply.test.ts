@@ -4,9 +4,9 @@
  * DDL 文字列の中身は `@alt/sql` のテストが見ているので、ここで見るのは
  * 「並べて流した結果、DB がどうなったか」。in-memory の SQLite を使う。
  */
-import { apply, managedTables, resolveDbPath, schemaStatements } from './apply.js'
+import { apply, managedTables, resolveDbPath } from './apply.js'
 import { loadBundle } from './bundle.js'
-import { FLOW_STATE_TABLE, MANUAL_CHECK_TABLE } from '@alt/sql'
+import { FLOW_STATE_TABLE, MANUAL_CHECK_TABLE, schemaStatements } from '@alt/sql'
 import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 

@@ -13,12 +13,11 @@ services:
       target: dev
     container_name: alt-kintone-dev
     working_dir: /app
-    # ポートはまだ公開しない。サーバーが無いうえ、ホストの 3000 / 5173 は
-    # 別プロジェクトのコンテナが使っていて衝突する。API と FE を作るときに
-    # 空いているポート（例: 3100 / 5273）を選んでここに追加する。
-    # ports:
-    #   - "5273:5173"
-    #   - "3100:3000"
+    # ホストの 3000 / 5173 は別プロジェクトのコンテナが使っているので避ける。
+    # 3100 = API（pnpm serve）、5273 = FE の dev サーバー（フェーズ4で使う）。
+    ports:
+      - "3100:3000"
+      - "5273:5173"
     volumes:
       - .:/app
       # 匿名ボリューム。上の bind mount が各パッケージの node_modules を
@@ -28,6 +27,7 @@ services:
       - /app/packages/cli/node_modules
       - /app/packages/definitions/node_modules
       - /app/packages/dsl/node_modules
+      - /app/packages/server/node_modules
       - /app/packages/sql/node_modules
       - sqlite-data:/app/data
     environment:

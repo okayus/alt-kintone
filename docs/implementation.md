@@ -34,38 +34,49 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 |---|---|---|
 | 1 | [定義層](impl/phase-1-definitions.md) | **済**（2026-08-06） |
 | 2 | [CLI](impl/phase-2-cli.md) | **済**（2026-08-06） |
-| 3 | [バックエンド](impl/phase-3-backend.md) | **← いまここ（未着手）** |
-| 4 | [FE + 動作確認](impl/phase-4-frontend.md) | 未着手 |
+| 3 | [バックエンド](impl/phase-3-backend.md) | **済**（2026-08-06） |
+| 4 | [FE + 動作確認](impl/phase-4-frontend.md) | **← いまここ（未着手）** |
 
-**次に読むもの → [impl/phase-3-backend.md](impl/phase-3-backend.md)**
+**次に読むもの → [impl/phase-4-frontend.md](impl/phase-4-frontend.md)**
 
-フェーズ3〜4 は概要と完了条件だけ書いてある。着手時に詳細化する。
+フェーズ4 は概要と完了条件だけ書いてある。着手時に詳細化する。
 
 ---
 
 ## すでに動いているもの
 
-`pnpm verify` が通る状態（132 テスト）。
+`pnpm verify` が通る状態（232 テスト）。
 
 | パッケージ | 中身 |
 |---|---|
-| `@alt/dsl` | 条件式AST（型・zodスキーマ・JSON Schema）、テーブル定義、**フロー定義**（`flow` / `step` / `check` / `manualCheck` / `bind`、reads・writes からの access 導出）、**ロール定義**、**定義バンドル**（`DefinitionBundle` — バックエンドへの受け渡し形）、外部キー解決（`foreignKeysTo` / `resolveFieldPath`）、`toColumnName` |
-| `@alt/sql` | AST → SQL 変換、`CREATE TABLE` 生成、**プラットフォームテーブル**（`_flow_state` / `_manual_check`）、方言（SQLite / PostgreSQL） |
+| `@alt/dsl` | 条件式AST（型・zodスキーマ・JSON Schema）、テーブル定義、**フロー定義**（`flow` / `step` / `check` / `manualCheck` / `bind`、reads・writes からの access 導出、**行レベル認可の `rowFilter`**）、**ロール定義**、**定義バンドル**（`DefinitionBundle` — バックエンドへの受け渡し形）、外部キー解決（`foreignKeysTo` / `resolveFieldPath`）、`toColumnName` |
+| `@alt/sql` | AST → SQL 変換、`CREATE TABLE` 生成、**プラットフォームテーブル**（`_flow_state` / `_manual_check`）、**有効期間型の読み書きSQL**（`query.ts` — 一覧・閉じてINSERT・フロー状態・手動チェック）、方言（SQLite / PostgreSQL） |
 | `@alt/definitions` | **客先の定義そのもの**。テーブル5本（deal / company / contact / employee / activity）と営業フロー1本。出口条件8件（自動5・手動3） |
-| `@alt/cli` | **`alt` コマンド**。`validate`（3層18ルール）/ `apply`（SQLite にスキーマ）/ `export`（定義をJSONで） |
+| `@alt/cli` | **`alt` コマンド**。`validate`（3層19ルール）/ `apply`（SQLite にスキーマ）/ `export --out`（定義をJSONで）/ `seed`（開発用データ） |
+| `@alt/server` | **REST API**。定義レジストリ、ルート自動生成（**未バインドは 404**）、出口条件の一括評価、有効期間型の書き込み、ステップ遷移、認可4層 + `_permissions`、`X-Dev-User` 詐称 |
 | `testdata/condition-eval/` | 言語非依存の適合テスト6件。実SQLiteで評価される |
 
-**ローカルのSQLiteに実際のスキーマが作れる**ところまで来た（業務5本 + プラットフォーム2本、
-有効期間型の列と現在行のユニーク索引つき）。まだ無いもの: バックエンド、FE。
+**営業フロー1本が API として動く**ところまで来た。案件の一覧・詳細に現在ステップと出口条件の
+チェックリストが乗り、更新はバージョンとして積まれ、`as_of` で過去が読め、担当者でなければ
+書き込みが 403 になる。まだ無いもの: **FE**。
 
 開発は Docker 内で行う。
 
 ```sh
 docker compose up -d
 docker compose exec dev pnpm verify              # check:wiring → fmt:check → typecheck → lint → test
+
 docker compose exec dev pnpm alt validate        # 定義の検証（--json あり）
-docker compose exec dev pnpm alt apply --recreate # SQLite にスキーマを作り直す
+docker compose exec dev pnpm alt apply --recreate            # SQLite にスキーマを作り直す
+docker compose exec dev pnpm alt export --out data/definitions.json  # サーバーが読む形で書き出す
+docker compose exec dev pnpm alt seed --reset    # デモデータ
+docker compose exec -d dev pnpm serve            # API（ホストからは localhost:3100）
+
+curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
 ```
+
+> ⚠ コンテナを作り直したあとに `ERR_MODULE_NOT_FOUND` が出たら、匿名ボリュームだけ
+> 新しくなって pnpm が再リンクしていない。README の対処を見る。
 
 段取り（2026-08-06 /dandori で整備）:
 
@@ -117,5 +128,8 @@ docker compose exec dev pnpm alt apply --recreate # SQLite にスキーマを作
 
 - **TS版バックエンドは仕様であり、Go版完成後に捨てる。** 凝った抽象化をしない
 - **未確定の論点は [product-concept.md §8-2](product-concept.md) にある。** 実装中に判断が必要になったらそこを見て、決めたら追記する
-- **仕様と実装が食い違ったら、仕様を疑う。** これまで3回、実装して初めて仕様の穴が見つかっている
-  （`meo_keyword` の分離、`field.path` がフィールド名を持つこと、boolean のバインド）
+- **仕様と実装が食い違ったら、仕様を疑う。** これまで5回、実装して初めて仕様の穴が見つかっている
+  （`meo_keyword` の分離、`field.path` がフィールド名を持つこと、boolean のバインド、
+  **ステップを担当しないロールがフローに参加できないこと**、
+  **プラットフォームが客先定義の名前を直に知っていること** — 後の2つは
+  [product-concept.md §8-2](product-concept.md) 論点12・13）
