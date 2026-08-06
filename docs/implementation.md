@@ -62,21 +62,21 @@ alt-kintone は「業務フローを第一級の概念に置いた、AI前提の
 
 ```sh
 docker compose up -d
-docker compose exec dev pnpm verify              # check:compose → typecheck → lint → test → fmt:check
+docker compose exec dev pnpm verify              # check:wiring → fmt:check → typecheck → lint → test
 docker compose exec dev pnpm alt validate        # 定義の検証（--json あり）
 docker compose exec dev pnpm alt apply --recreate # SQLite にスキーマを作り直す
 ```
 
 段取り（2026-08-06 /dandori で整備）:
 
-- verify 先頭の `check:compose`（`scripts/check-compose-volumes.mjs`）が、パッケージ新設時の
-  docker-compose.yml 匿名ボリューム追記漏れを機械検知する
 - フェーズの着手は `/phase-start <N>`、完了処理（完了条件の検証・記録更新・コミット）は `/phase-done <N>`
-- **パッケージを追加したら3箇所**: `docker-compose.yml` の匿名ボリューム / 自身の `tsconfig.json` の `paths` /
-  ルート `vite.config.ts` の `resolve.alias`。alias が無いと vitest が `dist/` の古い成果物を読み、
-  prebuild 忘れに気づけない（フェーズ1で踏んだ）
-- **同じ罠が実行時にもある**: `alt` の起動は `tsx --tsconfig packages/cli/tsconfig.json` が必須。
-  `--tsconfig` を落とすと tsx が `paths` を見ず、`dist/` の古い成果物を読む（フェーズ2で確認）
+- **パッケージを追加したら4箇所**（compose の匿名ボリューム / `tsconfig.json` の `paths` /
+  `vite.config.ts` の `resolve.alias` / `tsx` 起動の `--tsconfig`）。**覚えなくてよい** —
+  verify 先頭の `check:wiring`（`scripts/check-wiring.mjs`）が4つとも検知して落とす。
+  2〜4 はどれも「`dist/` の古い成果物を読んだまま通る」形で壊れるので、機械で塞いである
+- **`package.json` を編集したら `pnpm install` は hook が自動で流す**（`.claude/hooks/`）
+- **コンテナ内で使い捨てスクリプトを走らせるとき**は置き場に注意（CLAUDE.md「開発環境」参照）。
+  scratchpad は見えず、`/app` 直下は依存を解決できない
 
 ---
 

@@ -8,9 +8,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "verify": "pnpm check:compose && pnpm typecheck && pnpm lint && pnpm test && pnpm fmt:check",
+    "verify": "pnpm check:wiring && pnpm fmt:check && pnpm typecheck && pnpm lint && pnpm test",
     "alt": "tsx --tsconfig packages/cli/tsconfig.json packages/cli/src/main.ts",
-    "check:compose": "node scripts/check-compose-volumes.mjs",
+    "check:wiring": "node scripts/check-wiring.mjs",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",

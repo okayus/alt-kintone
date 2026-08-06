@@ -38,7 +38,7 @@ TS版バックエンドは仕様であり、Go版完成後は実装を捨てて
 
 ```sh
 docker compose up -d                   # イメージをビルドし、pnpm install して常駐
-docker compose exec dev pnpm verify    # check:compose → typecheck → lint → test → fmt:check
+docker compose exec dev pnpm verify    # check:wiring → fmt:check → typecheck → lint → test
 ```
 
 `pnpm install` は compose の `command` が起動時に実行するので、別途叩く必要はない。
@@ -64,8 +64,8 @@ pnpm typecheck
 
 | command | what |
 |---|---|
-| **`pnpm verify`** | **check:compose → typecheck → lint → test → fmt:check をまとめて実行。コミット前はこれ1つでよい** |
-| `pnpm check:compose` | workspace パッケージと docker-compose.yml の匿名ボリュームの整合チェック |
+| **`pnpm verify`** | **check:wiring → fmt:check → typecheck → lint → test をまとめて実行。コミット前はこれ1つでよい**（安い順に並べて、落ちるなら早く落とす） |
+| `pnpm check:wiring` | パッケージ追加時の「4箇所」の追記漏れチェック（下記） |
 | `pnpm test` | 全パッケージのテスト（vitest / `vp test`） |
 | `pnpm typecheck` | 全パッケージの型検査（`tsc --noEmit`） |
 | `pnpm build` | 全パッケージのビルド（tsdown / `vp pack`） |
@@ -88,17 +88,28 @@ docker compose exec dev pnpm alt export            # 定義バンドルを JSON 
 
 差分適用は持たない。既存テーブルがあるときに `--recreate` を求めるのは、黙ってデータを消さないため。
 
-`typecheck` と `test` は **prebuild を必要としない**。パッケージ間の参照がソースを直接指すよう、
-**2箇所**で同じ解決を与えている。
+### パッケージを追加したときの「4箇所」
 
-| 対象 | 設定 |
-|---|---|
-| typecheck（tsc） | 各パッケージの `tsconfig.json` の `paths` |
-| test（vitest） | ルート `vite.config.ts` の `resolve.alias` |
+`typecheck` / `test` / `alt` は **prebuild を必要としない**。パッケージ間の参照がソースを直接指すよう、
+同じ解決を複数箇所で与えているため。**どれを忘れても即座には壊れず、`dist/` の古い成果物を
+読んだまま通ってしまう**（prebuild 忘れに気づけない、という一番たちの悪い壊れ方）。
 
-`alt` の実行時も前者を使う（ルート `package.json` の `alt` スクリプトが
-`tsx --tsconfig packages/cli/tsconfig.json` を渡している）。**`--tsconfig` を落とすと**
-tsx が `paths` を見なくなり、同じく `dist/` の古い成果物を読む。
+| # | 対象 | 設定 |
+|---|---|---|
+| 1 | コンテナ内の依存 | `docker-compose.yml` の匿名ボリューム |
+| 2 | typecheck（tsc） | そのパッケージの `tsconfig.json` の `paths` |
+| 3 | test（vitest） | ルート `vite.config.ts` の `resolve.alias` |
+| 4 | `alt` の実行時 | ルート `package.json` の `tsx` 起動に `--tsconfig`（2 を実行時にも効かせる） |
+
+覚えておく必要はない。**`pnpm check:wiring`（`verify` の先頭）が4つとも検知して落とす。**
+消し忘れ（対応するパッケージが無い alias など）は警告として出すが、失敗にはしない。
+
+### 自動で走るもの
+
+`package.json` / `pnpm-workspace.yaml` を編集すると、PostToolUse hook
+（`.claude/hooks/pnpm-install-on-manifest-change.sh`）がコンテナ内で `pnpm install` を流す。
+compose の `command` は起動時にしか install しないので、依存を足したあとの叩き忘れで
+`Cannot find module` / `TS2307` を踏むのを防ぐ。発火の証跡は `.claude/.hook-log`（gitignore 済み）。
 
 vitest 側が要るのは、無いと workspace のシンボリックリンク経由で `dist/` の**ビルド済み成果物**を
 読んでしまうため。prebuild を忘れると「古いコードのままテストが通る」という一番たちの悪い壊れ方をする。

@@ -129,14 +129,24 @@
 - **vite-plus (`vp`)** で pack / test / lint / fmt を統一。テストは vitest、lint は oxlint
 - パッケージ: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・定義バンドル）、`@alt/sql`（AST→SQL変換・DDL。**Goに移植する部分**）、`@alt/definitions`（客先の定義そのもの。テーブル・営業フロー・ロール）、`@alt/cli`（`alt` コマンド）
 - **`alt` の起動は `pnpm alt <cmd>`**（`tsx --tsconfig packages/cli/tsconfig.json` 経由）。**`--tsconfig` は必須** — 落とすと tsx が `paths` を見ず `dist/` の古い成果物を読む（vitest の alias と同じ罠）
-- **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:compose → typecheck → lint → test → fmt:check をまとめて実行）
-  - `check:compose` は「パッケージ新設時の docker-compose.yml 匿名ボリューム追記」の忘れを機械検知する
+- **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:wiring → fmt:check → typecheck → lint → test をまとめて実行）
+  - `check:wiring` は**パッケージ追加時の「4箇所」の追記漏れ**を機械検知する（下記）。`fmt:check` が前寄りなのは、整形ミスを40秒でなく2秒で返すため
   - フェーズの着手/完了は `/phase-start <N>` / `/phase-done <N>`（`docs/implementation.md` 参照）
   - `pnpm install` は compose の command が起動時に実行する
   - **ポートは未公開**（サーバーがまだ無く、ホストの3000/5173は別プロジェクトのコンテナが使用中）
   - **パッケージを追加したら `docker-compose.yml` の匿名ボリュームにも追記する**
-- `typecheck` / `test` は **prebuild不要**。パッケージ間参照をソースに向ける設定が**2箇所**ある: tsconfig の `paths`（tsc用）と、ルート `vite.config.ts` の `resolve.alias`（vitest用）。**パッケージ追加時は両方に追記する**（alias が無いと vitest が `dist/` の古い成果物を読み、prebuild 忘れでテストが通ってしまう）
+- **パッケージを追加したら4箇所**（`pnpm check:wiring` が全部を検知して落とす。手で覚えなくてよい）:
+  1. `docker-compose.yml` の匿名ボリューム
+  2. そのパッケージの `tsconfig.json` の `paths`（tsc用）
+  3. ルート `vite.config.ts` の `resolve.alias`（vitest用）
+  4. ルート `package.json` の `tsx` 起動に `--tsconfig`
+  - 2〜4 はすべて「`dist/` の古い成果物を読む」という同じ壊れ方をする。**prebuild 忘れに気づけないまま通ってしまう**のが厄介な点
+- **`package.json` / `pnpm-workspace.yaml` を編集したら `pnpm install` は自動で走る**（PostToolUse hook、`.claude/hooks/pnpm-install-on-manifest-change.sh`）。手で叩く必要はない。発火の証跡は `.claude/.hook-log`
 - 落とし穴（対処済み）: `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` が無いと、非対話起動で `pnpm install` が corepack の確認待ちで無限に止まる
+- **コンテナ内で使い捨てスクリプトを実行するとき**（DBの中身を見る等）: **Write ツールでリポジトリ内の「依存を解決できるパッケージ配下」に置き**（例: `packages/cli/check.tmp.ts`）、`docker compose exec` で実行して消す。リポジトリは bind mount されているのでホストから置ける
+  - scratchpad はコンテナから見えない。`/app` 直下や `/app/data` は pnpm の strict レイアウトのため依存を解決できず `ERR_MODULE_NOT_FOUND` になる（`better-sqlite3` は `packages/cli/node_modules` にしかない）
+  - heredoc で `docker compose exec sh -c` に流し込まない（クォートが壊れる）
+  - `git` はホスト側で叩く（コンテナ内からは「Not a git repository」になる）
 
 ## 作業ルール
 
