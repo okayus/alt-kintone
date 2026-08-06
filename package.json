@@ -9,6 +9,7 @@
   },
   "scripts": {
     "verify": "pnpm check:compose && pnpm typecheck && pnpm lint && pnpm test && pnpm fmt:check",
+    "alt": "tsx --tsconfig packages/cli/tsconfig.json packages/cli/src/main.ts",
     "check:compose": "node scripts/check-compose-volumes.mjs",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",

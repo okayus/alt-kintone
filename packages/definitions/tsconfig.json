@@ -7,9 +7,9 @@
     "declarationMap": false,
     "paths": {
       // prebuild なしで typecheck できるようソースを直接指す。
-      "@alt/dsl": ["../../packages/dsl/src/index.ts"],
-      // @alt/sql はテスト専用。定義そのものは SQL 層に依存しない
-      "@alt/sql": ["../../packages/sql/src/index.ts"]
+      // 依存はこれだけ。定義そのものは SQL 層にも CLI にも依存しない
+      // （定義が SQL に変換できるかは `alt validate` 側で検証している）
+      "@alt/dsl": ["../../packages/dsl/src/index.ts"]
     }
   },
   "include": ["src/**/*"],

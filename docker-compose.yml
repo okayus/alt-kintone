@@ -25,6 +25,7 @@ services:
       # ホスト側の（空の）ディレクトリで覆い隠すのを防ぐ。
       # パッケージを追加したらここにも足すこと。
       - /app/node_modules
+      - /app/packages/cli/node_modules
       - /app/packages/definitions/node_modules
       - /app/packages/dsl/node_modules
       - /app/packages/sql/node_modules

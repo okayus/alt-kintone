@@ -325,15 +325,17 @@ stateDiagram-v2
 | `proposed` 提案 | 自社案を検討している | `amount_presented` 金額を提示した | **自動**（`initial_billing` or `monthly_billing` > 0） |
 | | | `decision_maker_met` 決裁者に会えている | **自動**（決裁者との完了済み activity が存在） |
 | | | `timing_confirmed` 導入時期を確認した | **自動**（`expected_close_month` が入っている） |
+| `suspended` 保留 | 凍結が解けた | `resumable` 再開できる状況になった | 手動（先方の事情なので自動判定できない） |
 
 **出口条件のキーはラベルと独立した識別子**（`product-concept.md` §3-5）。`_manual_check` に入り、文言を直してもチェック状態が失われない。**キーを変えることは別の出口条件にすることと同義**なので、変更するときは移行を考えること。
 
-決着ステップ（上の表に出口条件が無いもの）:
+決着ステップ（出口条件を持たないもの）:
 
 | ステップ | 次 | 備考 |
 |---|---|---|
 | `won` 受注 / `lost` 失注 / `abandoned` 消滅 | （終端） | `deal.status` と値が重なる。二重管理の論点は `product-concept.md` §8-2 論点9 |
-| `suspended` 保留 | `qualified` | 決着ではない。追跡は続け、予測からは外す |
+
+**出口条件を免除されるのは `next` が空のステップだけ**（`product-concept.md` §8-1 フェーズ2、`alt validate` の `step-without-exit`）。保留は `qualified` に戻る先があるので決着ではなく、上の表のとおり出口条件を持つ。追跡は続け、予測からは外す。
 
 起点は `contacted`（フロー定義の `initial`）。遷移は `contacted → {qualified, proposed, lost}` / `qualified → {proposed, suspended, lost}` / `proposed → {won, qualified, lost, abandoned}` / `suspended → {qualified}`。
 

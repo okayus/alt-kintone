@@ -149,12 +149,14 @@ const OWNED_TABLES = [deal, activity]
 
 /**
  * 決着ステップ。出口条件を持たない（出る先が無いので、出る条件も無い）。
+ * `alt validate` の `step-without-exit` は `next` が空なら免除する
+ * （docs/product-concept.md §8-1 フェーズ2）。
  *
  * ⚠ `deal.status` と値が1対1で重なっている。二重管理になりうる論点として
  * docs/product-concept.md §8-2 に記録した。
  */
-const outcome = (key: string, name: string, next: string[] = []) =>
-  step({ key, name, role: 'sales_rep', writes: [deal], exit: [], next })
+const outcome = (key: string, name: string) =>
+  step({ key, name, role: 'sales_rep', writes: [deal], exit: [], next: [] })
 
 export const sales = flow({
   key: 'sales',
@@ -209,8 +211,18 @@ export const sales = flow({
     outcome('won', '受注'),
     outcome('lost', '失注'),
     outcome('abandoned', '消滅'),
-    // 保留は決着ではない。先方都合で凍結しているだけなので追跡は続け、予測からは外す
-    outcome('suspended', '保留', ['qualified']),
+
+    // 保留は決着ではない。先方都合で凍結しているだけなので追跡は続け、予測からは外す。
+    // 決着ステップと違って戻り先があるので、出口条件（＝再開の判断）を持つ。
+    // 「再開できる状況か」は先方の事情なので自動判定できず、手動チェックになる
+    step({
+      key: 'suspended',
+      name: '保留',
+      role: 'sales_rep',
+      writes: [deal],
+      exit: [manualCheck('resumable', '再開できる状況になった')],
+      next: ['qualified'],
+    }),
   ],
 
   // 使用テーブルと access は steps の reads/writes から導出される（product-concept.md §3-3）。

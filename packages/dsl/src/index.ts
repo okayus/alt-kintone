@@ -1,4 +1,5 @@
 export * from './ast.js'
+export * from './bundle.js'
 export * from './flow.js'
 export * from './role.js'
 export * from './schema.js'

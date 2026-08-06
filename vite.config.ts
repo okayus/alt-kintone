@@ -14,6 +14,7 @@ export default defineConfig({
       '@alt/dsl': source('dsl'),
       '@alt/sql': source('sql'),
       '@alt/definitions': source('definitions'),
+      '@alt/cli': source('cli'),
     },
   },
   // fmt は既存コードの流儀（シングルクォート・セミコロン無し）に合わせる。
