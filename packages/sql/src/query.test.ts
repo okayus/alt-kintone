@@ -23,13 +23,17 @@ import { boolean, integer, json, registry, table, text, uuid, type Pred } from '
 import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 
-const item = table('item', {
-  id: uuid().primaryKey(),
-  name: text().required(),
-  price: integer(),
-  active: boolean(),
-  meta: json(),
-})
+const item = table(
+  'item',
+  {
+    id: uuid('ID').primaryKey(),
+    name: text('名称').required(),
+    price: integer('価格'),
+    active: boolean('有効'),
+    meta: json('メタ'),
+  },
+  { label: '品目' },
+)
 
 const bundle = { tables: registry(item), flows: [], roles: [] }
 const values = { 'currentUser.id': 'u1', today: '2026-07-15', now: '2026-07-15T00:00:00.000Z' }
@@ -227,20 +231,17 @@ describe('プラットフォームテーブル', () => {
 })
 
 describe('値の変換', () => {
+  const bool = { type: 'boolean', label: '有効', required: false, primaryKey: false } as const
+  const blob = { type: 'json', label: 'メタ', required: false, primaryKey: false } as const
+
   it('boolean は 0/1 に、json は文字列になる（方言が吸収する）', () => {
-    expect(encodeValue({ type: 'boolean', required: false, primaryKey: false }, true)).toBe(1)
-    expect(encodeValue({ type: 'json', required: false, primaryKey: false }, { a: 1 })).toBe(
-      '{"a":1}',
-    )
+    expect(encodeValue(bool, true)).toBe(1)
+    expect(encodeValue(blob, { a: 1 })).toBe('{"a":1}')
     // PostgreSQL は boolean をそのまま扱える
-    expect(
-      encodeValue({ type: 'boolean', required: false, primaryKey: false }, true, postgres),
-    ).toBe(true)
+    expect(encodeValue(bool, true, postgres)).toBe(true)
   })
 
   it('decode は encode の逆', () => {
-    const bool = { type: 'boolean', required: false, primaryKey: false } as const
-    const blob = { type: 'json', required: false, primaryKey: false } as const
     expect(decodeValue(bool, encodeValue(bool, false))).toBe(false)
     expect(decodeValue(blob, encodeValue(blob, { a: 1 }))).toEqual({ a: 1 })
     expect(decodeValue(bool, null)).toBeNull()

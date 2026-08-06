@@ -18,33 +18,53 @@ import { postgres } from './dialect.js'
 // docs/domain-model.md §5 のテーブルを一部抜き出したもの
 const employee = table(
   'employee',
-  { id: uuid().primaryKey(), name: text().required() },
-  {
-    global: true,
-  },
+  { id: uuid('ID').primaryKey(), name: text('氏名').required() },
+  { label: '従業員', global: true },
 )
-const company = table('company', { id: uuid().primaryKey(), name: text().required() })
-const contact = table('contact', {
-  id: uuid().primaryKey(),
-  companyId: reference('company').required(),
-  isDecisionMaker: boolean().required(),
-})
-const deal = table('deal', {
-  id: uuid().primaryKey(),
-  companyId: reference('company').required(),
-  initialBilling: integer().required(),
-  monthlyBilling: integer().required(),
-  expectedCloseMonth: yearMonth(),
-  status: enumOf(['open', 'suspended', 'won', 'lost', 'abandoned']).required(),
-  ownerEmployeeId: reference('employee').required(),
-})
-const activity = table('activity', {
-  id: uuid().primaryKey(),
-  dealId: reference('deal'),
-  contactId: reference('contact'),
-  completedAt: datetime(),
-  scheduledAt: datetime(),
-})
+const company = table(
+  'company',
+  { id: uuid('ID').primaryKey(), name: text('名称').required() },
+  { label: '顧客企業' },
+)
+const contact = table(
+  'contact',
+  {
+    id: uuid('ID').primaryKey(),
+    companyId: reference('company', '顧客企業').required(),
+    isDecisionMaker: boolean('決裁権').required(),
+  },
+  { label: '先方担当者' },
+)
+const deal = table(
+  'deal',
+  {
+    id: uuid('ID').primaryKey(),
+    companyId: reference('company', '顧客企業').required(),
+    initialBilling: integer('一時金・請求額').required(),
+    monthlyBilling: integer('月額・請求額').required(),
+    expectedCloseMonth: yearMonth('見込み受注月'),
+    status: enumOf('状態', [
+      { key: 'open', label: '進行中' },
+      { key: 'suspended', label: '保留' },
+      { key: 'won', label: '受注' },
+      { key: 'lost', label: '失注' },
+      { key: 'abandoned', label: '消滅' },
+    ]).required(),
+    ownerEmployeeId: reference('employee', '担当').required(),
+  },
+  { label: '案件' },
+)
+const activity = table(
+  'activity',
+  {
+    id: uuid('ID').primaryKey(),
+    dealId: reference('deal', '案件'),
+    contactId: reference('contact', '先方担当者'),
+    completedAt: datetime('実施日時'),
+    scheduledAt: datetime('予定日時'),
+  },
+  { label: '活動' },
+)
 
 const reg = registry(employee, company, contact, deal, activity)
 

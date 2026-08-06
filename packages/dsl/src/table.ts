@@ -2,14 +2,16 @@
  * テーブル定義。docs/product-concept.md §5-6、docs/domain-model.md §5
  *
  * まだ型パズルは入れていない（`deal.amount.gt(0)` のような型安全な書き味は
- * 条件式ビルダーの層で後から足す）。ここが持つのは、
- * **条件式を SQL にするために必要な情報**だけ:
+ * 条件式ビルダーの層で後から足す）。ここが持つのは:
  *
- *  - フィールドの名前と型
- *  - 外部キー（どのテーブルを指すか）
+ *  - フィールドの名前と型（条件式を SQL にするため）
+ *  - 外部キー（暗黙結合の判定 docs/condition-ast.md §4 と、リレーションを辿る
+ *    field の JOIN 解決のため）
+ *  - **表示名（label）**。定義を営業がそのまま読めるようにするため
+ *    （docs/impl/phase-5-flow-reference.md。FE が enum ラベルを手書きで二重管理する
+ *    §8-2 論点14 をここで解く）
  *
- * 外部キーは暗黙結合の判定（docs/condition-ast.md §4）と、リレーションを
- * 辿る field の JOIN 解決の両方で必要になる。
+ * ラベルは**必須**。省略可にすると必ず書かれないものが出て、画面に英語キーが漏れる。
  */
 import { z } from 'zod'
 
@@ -27,18 +29,35 @@ export const FIELD_TYPES = [
 ] as const
 export type FieldType = (typeof FIELD_TYPES)[number]
 
+/**
+ * enum の候補1つ。`key` が DB に入り条件式 AST のリテラルになる識別子で、
+ * `label` は表示だけ。分けるのは、文言を直した瞬間に既存データが孤児になるのを
+ * 防ぐため（出口条件を明示キーで識別するのと同じ理由）。
+ *
+ * `Record<key, label>` でなく配列なのは**表示順を保つ**ため。Record にすると
+ * Go の map で反復順が不定になり、候補の並びが定義から失われる。
+ */
+export interface EnumValue {
+  key: string
+  label: string
+}
+
 export interface FieldDef {
   type: FieldType
+  /** 表示名。 */
+  label: string
   required: boolean
   primaryKey: boolean
   /** 外部キーの参照先テーブル名。 */
   references?: string
   /** `type: 'enum'` のときの候補。 */
-  values?: readonly string[]
+  values?: readonly EnumValue[]
 }
 
 export interface TableDef {
   name: string
+  /** 表示名。 */
+  label: string
   /**
    * 横断マスタ（docs/product-concept.md §3-4）。
    * true なら明示バインド（role / purpose）が不要になり、参照は自動記録される。
@@ -70,8 +89,11 @@ function builder(def: FieldDef): FieldBuilder {
   }
 }
 
-const scalar = (type: FieldType) => (): FieldBuilder =>
-  builder({ type, required: false, primaryKey: false })
+// ラベルは第1引数。書き忘れは型エラーになる（docs/impl/phase-5-flow-reference.md 決定A）
+const scalar =
+  (type: FieldType) =>
+  (label: string): FieldBuilder =>
+    builder({ type, label, required: false, primaryKey: false })
 
 export const uuid = scalar('uuid')
 export const text = scalar('text')
@@ -83,8 +105,8 @@ export const datetime = scalar('datetime')
 export const yearMonth = scalar('yearMonth')
 export const json = scalar('json')
 
-export function enumOf(values: readonly string[]): FieldBuilder {
-  return builder({ type: 'enum', required: false, primaryKey: false, values })
+export function enumOf(label: string, values: readonly EnumValue[]): FieldBuilder {
+  return builder({ type: 'enum', label, required: false, primaryKey: false, values })
 }
 
 /**
@@ -94,17 +116,24 @@ export function enumOf(values: readonly string[]): FieldBuilder {
  * （deal.sourceContractId → contract、contract.dealId → deal）。
  * 参照先が実在するかは validate の参照整合層で検証する。
  */
-export function reference(tableName: string): FieldBuilder {
-  return builder({ type: 'uuid', required: false, primaryKey: false, references: tableName })
+export function reference(tableName: string, label: string): FieldBuilder {
+  return builder({
+    type: 'uuid',
+    label,
+    required: false,
+    primaryKey: false,
+    references: tableName,
+  })
 }
 
 export function table(
   name: string,
   fields: Record<string, FieldBuilder>,
-  opts: { global?: boolean } = {},
+  opts: { label: string; global?: boolean },
 ): TableDef {
   return {
     name,
+    label: opts.label,
     global: opts.global ?? false,
     fields: Object.fromEntries(Object.entries(fields).map(([key, f]) => [key, f.def])),
   }
@@ -189,21 +218,36 @@ export function toColumnName(field: string): string {
 // zod スキーマ（定義そのものの検証）
 // ---------------------------------------------------------------------------
 
+export const enumValueSchema: z.ZodType<EnumValue> = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+})
+
 export const fieldDefSchema: z.ZodType<FieldDef> = z
   .object({
     type: z.enum(FIELD_TYPES),
+    label: z.string().min(1),
     required: z.boolean(),
     primaryKey: z.boolean(),
     references: z.string().min(1).optional(),
-    values: z.array(z.string()).min(1).readonly().optional(),
+    values: z.array(enumValueSchema).min(1).readonly().optional(),
   })
   .refine((f) => f.type !== 'enum' || f.values !== undefined, {
     message: 'enum には values が必要',
     path: ['values'],
   })
+  // key の重複はチェック状態の識別キー重複（duplicate-exit-key）と同種の壊れ方をする
+  .refine(
+    (f) => f.values === undefined || new Set(f.values.map((v) => v.key)).size === f.values.length,
+    {
+      message: 'enum の値（key）が重複している',
+      path: ['values'],
+    },
+  )
 
 export const tableDefSchema: z.ZodType<TableDef> = z.object({
   name: z.string().min(1),
+  label: z.string().min(1),
   global: z.boolean(),
   fields: z.record(z.string().min(1), fieldDefSchema),
 })

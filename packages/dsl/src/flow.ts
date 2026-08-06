@@ -25,6 +25,14 @@ export interface AutoCheck {
   kind: 'auto'
   key: string
   label: string
+  /**
+   * どうすれば充足するか。営業が画面で読む説明文
+   * （docs/impl/phase-5-flow-reference.md 決定C）。
+   *
+   * ⚠ 手書きなので、条件式を変えて直し忘れるとズレる。だから画面では
+   * `referencedFields`（AST からの機械抽出）を併記して、ズレを目視できるようにする（決定D）。
+   */
+  howTo: string
   condition: Pred
 }
 
@@ -33,6 +41,8 @@ export interface ManualCheck {
   kind: 'manual'
   key: string
   label: string
+  /** どういう状態なら ✓ にしてよいか。判断基準を書く。 */
+  howTo: string
 }
 
 export type ExitCondition = AutoCheck | ManualCheck
@@ -44,12 +54,12 @@ export type ExitCondition = AutoCheck | ManualCheck
  * 別物になる（docs/product-concept.md §3-5）。表示は変わってよいが、
  * 「何を確認したか」の同一性は変わってはいけない。
  */
-export function check(key: string, label: string, condition: Pred): AutoCheck {
-  return { kind: 'auto', key, label, condition }
+export function check(key: string, label: string, howTo: string, condition: Pred): AutoCheck {
+  return { kind: 'auto', key, label, howTo, condition }
 }
 
-export function manualCheck(key: string, label: string): ManualCheck {
-  return { kind: 'manual', key, label }
+export function manualCheck(key: string, label: string, howTo: string): ManualCheck {
+  return { kind: 'manual', key, label, howTo }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +123,12 @@ export function bind(
 export interface StepDef {
   key: string
   name: string
+  /**
+   * この段階で何を目指すのか。「ステージは**買い手の状態変化**で定義する」
+   * （docs/sales-domain.md §4-5）という原則を、定義そのものに残す場所
+   * （docs/impl/phase-5-flow-reference.md 決定E）。kintone には原理的に持てない情報。
+   */
+  intent: string
   /** 担当ロール。`RoleDef.key` を指す。 */
   role: string
   /** 読むテーブル名。 */
@@ -130,6 +146,7 @@ export interface StepDef {
 export interface StepSpec {
   key: string
   name: string
+  intent: string
   role: string
   reads?: TableDef[]
   writes?: TableDef[]
@@ -141,6 +158,7 @@ export function step(spec: StepSpec): StepDef {
   return {
     key: spec.key,
     name: spec.name,
+    intent: spec.intent,
     role: spec.role,
     reads: (spec.reads ?? []).map((t) => t.name),
     writes: (spec.writes ?? []).map((t) => t.name),
@@ -266,12 +284,14 @@ export const exitConditionSchema: z.ZodType<ExitCondition> = z.discriminatedUnio
     kind: z.literal('auto'),
     key,
     label: z.string().min(1),
+    howTo: z.string().min(1),
     condition: predSchema,
   }),
   z.object({
     kind: z.literal('manual'),
     key,
     label: z.string().min(1),
+    howTo: z.string().min(1),
   }),
 ])
 
@@ -285,6 +305,7 @@ export const bindingDefSchema: z.ZodType<BindingDef> = z.object({
 export const stepDefSchema: z.ZodType<StepDef> = z.object({
   key,
   name: z.string().min(1),
+  intent: z.string().min(1),
   role: key,
   reads: z.array(key),
   writes: z.array(key),

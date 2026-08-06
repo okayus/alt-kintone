@@ -7,17 +7,17 @@
  * （docs/product-concept.md §4-3）。下の `TextField` などはこのファイル専用の部品で、
  * 共通部品ではない。
  *
- * ただし **enum の候補は定義から取る**（`deal.fields.productType.values`）。候補は
- * 業務ルールであってレイアウトではないので、書き写すと単に古くなる。
- * ⚠ 一方でラベルは定義に無いので `labels.ts` の手書きに落ちる。定義に無い値は
- *    英語キーのまま表示される（§8-2 論点14 が画面に出る形）。
+ * ただし**候補もラベルも定義から取る**（`deal.fields.*.values` / `.label`）。
+ * どちらも業務ルールであってレイアウトではないので、書き写すと単に古くなる。
+ * フェーズ5でラベルが定義に入り（§8-2 論点14 の解決）、このファイルの
+ * `label="案件名"` の手書きは消えた — 手で書いているのは**並べる順序**だけ。
  *
  * 送るのは**変更のあったフィールドだけ**。サーバは PATCH を差分として扱い、
  * 書かれなかったフィールドは現在行から引き継ぐ（有効期間型の「閉じて INSERT」）。
  */
 import { deal as dealDef } from '@alt/definitions'
 import { useState, type ReactNode } from 'react'
-import { CONFIDENCE, DEAL_STATUS, DEAL_TYPE, OUTCOME_REASON, PRODUCT_TYPE, label } from './labels'
+import { fieldLabel } from './labels'
 import type { Deal, DealPatch } from '../../shell/types'
 
 /** 入力中はすべて文字列で持つ。空文字が null を表す。 */
@@ -49,48 +49,30 @@ export function DealForm({ deal, busy, onSave, onCancel }: DealFormProps) {
       }}
     >
       <div className="fields">
-        <TextField name="title" label="案件名" draft={draft} set={set} />
-        <SelectField
-          name="productType"
-          label="商材"
-          labels={PRODUCT_TYPE}
-          draft={draft}
-          set={set}
-        />
-        <SelectField name="dealType" label="区分" labels={DEAL_TYPE} draft={draft} set={set} />
-        <SelectField name="status" label="状態" labels={DEAL_STATUS} draft={draft} set={set} />
+        <TextField name="title" draft={draft} set={set} />
+        <SelectField name="productType" draft={draft} set={set} />
+        <SelectField name="dealType" draft={draft} set={set} />
+        <SelectField name="status" draft={draft} set={set} />
 
-        <NumberField name="initialBilling" label="一時金・請求額" draft={draft} set={set} />
-        <NumberField name="initialProfit" label="一時金・自社収益" draft={draft} set={set} />
-        <NumberField name="monthlyBilling" label="月額・請求額" draft={draft} set={set} />
-        <NumberField name="monthlyProfit" label="月額・自社収益" draft={draft} set={set} />
-        <NumberField name="contractMonths" label="契約期間（月）" draft={draft} set={set} />
+        <NumberField name="initialBilling" draft={draft} set={set} />
+        <NumberField name="initialProfit" draft={draft} set={set} />
+        <NumberField name="monthlyBilling" draft={draft} set={set} />
+        <NumberField name="monthlyProfit" draft={draft} set={set} />
+        <NumberField name="contractMonths" draft={draft} set={set} />
 
-        <Field label="見込み受注月">
+        <Field label={fieldLabel(dealDef, 'expectedCloseMonth')}>
           <input
             type="month"
             value={draft['expectedCloseMonth'] ?? ''}
             onChange={(event) => set('expectedCloseMonth', event.target.value)}
           />
         </Field>
-        <SelectField
-          name="confidence"
-          label="ヨミ確度"
-          labels={CONFIDENCE}
-          draft={draft}
-          set={set}
-        />
+        <SelectField name="confidence" draft={draft} set={set} />
 
-        <SelectField
-          name="outcomeReasonCategory"
-          label="決着理由"
-          labels={OUTCOME_REASON}
-          draft={draft}
-          set={set}
-        />
-        <TextField name="outcomeReasonDetail" label="決着理由（詳細）" draft={draft} set={set} />
-        <TextField name="competitor" label="競合先" draft={draft} set={set} />
-        <Field label="決着日">
+        <SelectField name="outcomeReasonCategory" draft={draft} set={set} />
+        <TextField name="outcomeReasonDetail" draft={draft} set={set} />
+        <TextField name="competitor" draft={draft} set={set} />
+        <Field label={fieldLabel(dealDef, 'closedAt')}>
           <input
             type="date"
             value={draft['closedAt'] ?? ''}
@@ -98,7 +80,7 @@ export function DealForm({ deal, busy, onSave, onCancel }: DealFormProps) {
           />
         </Field>
 
-        <Field label="メモ" wide>
+        <Field label={fieldLabel(dealDef, 'note')} wide>
           <textarea
             rows={3}
             value={draft['note'] ?? ''}
@@ -114,7 +96,11 @@ export function DealForm({ deal, busy, onSave, onCancel }: DealFormProps) {
         <button type="button" disabled={busy} onClick={onCancel}>
           やめる
         </button>
-        {missing.length > 0 && <span className="unmet">必須が空: {missing.join(', ')}</span>}
+        {missing.length > 0 && (
+          <span className="unmet">
+            必須が空: {missing.map((name) => fieldLabel(dealDef, name)).join(', ')}
+          </span>
+        )}
         {missing.length === 0 && !changed && <span className="muted">変更なし</span>}
       </div>
     </form>
@@ -144,14 +130,13 @@ function Field({
 
 interface Bound {
   name: string
-  label: string
   draft: Draft
   set: (name: string, value: string) => void
 }
 
-function TextField({ name, label: text, draft, set }: Bound) {
+function TextField({ name, draft, set }: Bound) {
   return (
-    <Field label={text}>
+    <Field label={fieldLabel(dealDef, name)}>
       <input
         type="text"
         value={draft[name] ?? ''}
@@ -161,9 +146,9 @@ function TextField({ name, label: text, draft, set }: Bound) {
   )
 }
 
-function NumberField({ name, label: text, draft, set }: Bound) {
+function NumberField({ name, draft, set }: Bound) {
   return (
-    <Field label={text}>
+    <Field label={fieldLabel(dealDef, name)}>
       <input
         type="number"
         step={1}
@@ -174,23 +159,17 @@ function NumberField({ name, label: text, draft, set }: Bound) {
   )
 }
 
-/** 候補は定義から、表示は `labels.ts` から。 */
-function SelectField({
-  name,
-  label: text,
-  draft,
-  set,
-  labels,
-}: Bound & { labels: Record<string, string> }) {
+/** 候補（key）も表示（label）も定義から。 */
+function SelectField({ name, draft, set }: Bound) {
   const values = dealDef.fields[name]?.values ?? []
   const required = REQUIRED.includes(name)
   return (
-    <Field label={text}>
+    <Field label={fieldLabel(dealDef, name)}>
       <select value={draft[name] ?? ''} onChange={(event) => set(name, event.target.value)}>
         {!required && <option value="">—</option>}
         {values.map((value) => (
-          <option key={value} value={value}>
-            {label(labels, value)}
+          <option key={value.key} value={value.key}>
+            {value.label}
           </option>
         ))}
       </select>

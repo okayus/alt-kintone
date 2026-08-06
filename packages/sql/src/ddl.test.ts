@@ -122,11 +122,15 @@ describe('プラットフォームテーブル', () => {
 })
 
 describe('業務テーブル', () => {
-  const deal = table('deal', {
-    id: uuid().primaryKey(),
-    title: text().required(),
-    isKeyAccount: boolean(),
-  })
+  const deal = table(
+    'deal',
+    {
+      id: uuid('ID').primaryKey(),
+      title: text('案件名').required(),
+      isKeyAccount: boolean('重点顧客'),
+    },
+    { label: '案件' },
+  )
 
   it('有効期間型の列が自動で付く', () => {
     const sql = createTableSql(deal)

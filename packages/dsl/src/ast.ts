@@ -150,6 +150,94 @@ export interface Exists {
 export type Pred = Compare | In | IsNull | IsNotNull | And | Or | Not | Exists
 
 // ---------------------------------------------------------------------------
+// 参照フィールドの抽出（表示用）
+// ---------------------------------------------------------------------------
+
+/** 述語が参照しているフィールド1つ。 */
+export interface FieldRef {
+  /**
+   * どのテーブルのフィールドか。`exists` / `aggregate` の中のフィールドは
+   * エイリアスではなく**テーブル名**に解決して返す（エイリアスは表示に使えない）。
+   * `ROOT_SOURCE` だけはこの関数では解決できないので、呼び手がフローの target に読み替える。
+   */
+  source: string
+  path: readonly string[]
+}
+
+/**
+ * 述語が参照しているフィールドを、出現順・重複なしで列挙する。
+ *
+ * **表示のためだけの道具。** 「この条件が見ているデータ」をフロー参照画面に併記し、
+ * 手書きの `howTo` が条件式とズレたときに目視で分かるようにする
+ * （docs/impl/phase-5-flow-reference.md 決定D）。
+ *
+ * TS と Go の契約は AST そのもの（docs/condition-ast.md）であって、この関数は
+ * 契約に含まれない — **Go 版に移植する必要は無い**。
+ */
+export function referencedFields(pred: Pred): FieldRef[] {
+  const seen = new Set<string>()
+  const found: FieldRef[] = []
+
+  // エイリアス → テーブル名。exists / aggregate の入れ子で内側が外側を隠す（shadowing）
+  // のもオブジェクトのスプレッドがそのまま表現する
+  const emit = (node: Field, scope: Record<string, string>): void => {
+    const source = node.source === ROOT_SOURCE ? ROOT_SOURCE : (scope[node.source] ?? node.source)
+    const key = JSON.stringify([source, ...node.path])
+    if (seen.has(key)) return
+    seen.add(key)
+    found.push({ source, path: node.path })
+  }
+
+  const walkExpr = (node: Expr, scope: Record<string, string>): void => {
+    switch (node.type) {
+      case 'literal':
+      case 'context':
+        return
+      case 'field':
+        emit(node, scope)
+        return
+      case 'aggregate': {
+        const inner = { ...scope, [node.alias]: node.table }
+        if (node.field !== undefined) {
+          emit({ type: 'field', source: node.alias, path: node.field }, inner)
+        }
+        if (node.where !== undefined) walk(node.where, inner)
+        return
+      }
+    }
+  }
+
+  const walk = (node: Pred, scope: Record<string, string>): void => {
+    switch (node.type) {
+      case 'compare':
+        walkExpr(node.left, scope)
+        walkExpr(node.right, scope)
+        return
+      case 'in':
+        walkExpr(node.left, scope)
+        return
+      case 'isNull':
+      case 'isNotNull':
+        walkExpr(node.operand, scope)
+        return
+      case 'and':
+      case 'or':
+        for (const operand of node.operands) walk(operand, scope)
+        return
+      case 'not':
+        walk(node.operand, scope)
+        return
+      case 'exists':
+        walk(node.where, { ...scope, [node.alias]: node.table })
+        return
+    }
+  }
+
+  walk(pred, {})
+  return found
+}
+
+// ---------------------------------------------------------------------------
 // zod スキーマ
 // ---------------------------------------------------------------------------
 

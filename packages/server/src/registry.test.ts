@@ -44,7 +44,11 @@ describe('routes', () => {
   })
 
   it('どのフローも使っていないテーブルにはルートが生えない', () => {
-    const orphan = table('memo', { id: uuid().primaryKey(), body: text() })
+    const orphan = table(
+      'memo',
+      { id: uuid('ID').primaryKey(), body: text('本文') },
+      { label: 'メモ' },
+    )
     const withOrphan = buildRegistry({
       ...bundle,
       tables: { ...bundle.tables, memo: orphan },

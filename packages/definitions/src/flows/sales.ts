@@ -182,8 +182,8 @@ const OWNED_TABLES = [deal, activity]
  * ⚠ `deal.status` と値が1対1で重なっている。二重管理になりうる論点として
  * docs/product-concept.md §8-2 に記録した。
  */
-const outcome = (key: string, name: string) =>
-  step({ key, name, role: 'sales_rep', writes: [deal], exit: [], next: [] })
+const outcome = (key: string, name: string, intent: string) =>
+  step({ key, name, intent, role: 'sales_rep', writes: [deal], exit: [], next: [] })
 
 export const sales = flow({
   key: 'sales',
@@ -194,14 +194,27 @@ export const sales = flow({
   target: deal,
   initial: 'contacted',
 
+  // intent（この段階で目指すこと）は sales-domain.md §4-5 の原則
+  // 「ステージは買い手の状態変化で定義する」を、定義そのものに残す場所。
+  // howTo（充足のしかた）は営業が画面で読む説明文。条件式を変えたら直すこと
+  // — ズレは画面の「見ているデータ」（AST からの機械抽出）との食い違いで見える。
   steps: [
     step({
       key: 'contacted',
       name: '接触',
+      intent:
+        '買い手が話を聞く気になった状態にする。接触の回数ではなく、次の商談の約束が取れたかで判定する',
       role: 'sales_rep',
       reads: REFERENCE_TABLES,
       writes: OWNED_TABLES,
-      exit: [check('appointment_scheduled', 'アポイントの予定がある', appointmentScheduled)],
+      exit: [
+        check(
+          'appointment_scheduled',
+          'アポイントの予定がある',
+          '活動に、予定日時が入った未実施の「訪問」か「オンライン商談」を登録すると充足する',
+          appointmentScheduled,
+        ),
+      ],
       // 即決商談は qualified を飛ばして proposed に進む
       next: ['qualified', 'proposed', 'lost'],
     }),
@@ -209,13 +222,29 @@ export const sales = flow({
     step({
       key: 'qualified',
       name: 'ヒアリング',
+      intent:
+        '買い手が自分の課題を言語化できている状態にする。売り手が資料を作ったかではなく、買い手の状態で判定する',
       role: 'sales_rep',
       reads: REFERENCE_TABLES,
       writes: OWNED_TABLES,
       exit: [
-        manualCheck('problem_identified', '課題を確認した'),
-        check('budget_confirmed', '予算感を確認した', amountEntered),
-        check('decision_maker_identified', '決裁者を特定した', decisionMakerIdentified),
+        manualCheck(
+          'problem_identified',
+          '課題を確認した',
+          '先方が自分の言葉で困っていることを説明できたら ✓。こちらが推測した課題では立てない',
+        ),
+        check(
+          'budget_confirmed',
+          '予算感を確認した',
+          '案件の「一時金・請求額」か「月額・請求額」のどちらかに金額を入れると充足する',
+          amountEntered,
+        ),
+        check(
+          'decision_maker_identified',
+          '決裁者を特定した',
+          '先方担当者に「決裁権」ありの人を登録すると充足する',
+          decisionMakerIdentified,
+        ),
       ],
       next: ['proposed', 'suspended', 'lost'],
     }),
@@ -223,21 +252,46 @@ export const sales = flow({
     step({
       key: 'proposed',
       name: '提案',
+      intent:
+        '買い手が自社案を前提に検討している状態にする。金額・時期・決裁者の3点が揃っているかで判定する',
       role: 'sales_rep',
       reads: REFERENCE_TABLES,
       writes: OWNED_TABLES,
       exit: [
-        check('amount_presented', '金額を提示した', amountEntered),
-        check('decision_maker_met', '決裁者に会えている', decisionMakerMet),
-        check('timing_confirmed', '導入時期を確認した', closeMonthEntered),
+        check(
+          'amount_presented',
+          '金額を提示した',
+          '案件の「一時金・請求額」か「月額・請求額」に提示した金額を入れると充足する',
+          amountEntered,
+        ),
+        check(
+          'decision_maker_met',
+          '決裁者に会えている',
+          '「決裁権」ありの先方担当者を相手にした実施済みの活動を記録すると充足する',
+          decisionMakerMet,
+        ),
+        check(
+          'timing_confirmed',
+          '導入時期を確認した',
+          '案件の「見込み受注月」を入れると充足する',
+          closeMonthEntered,
+        ),
       ],
       // 「決裁者だと思っていた人が違った」で qualified に差し戻る
       next: ['won', 'qualified', 'lost', 'abandoned'],
     }),
 
-    outcome('won', '受注'),
-    outcome('lost', '失注'),
-    outcome('abandoned', '消滅'),
+    outcome('won', '受注', '買い手が発注を決めた。ここで営業は終わり、制作・運用の工程へ引き継ぐ'),
+    outcome(
+      'lost',
+      '失注',
+      '買い手が他社か別の解決策を選んだ。理由と競合先を記録して、次の提案の材料にする',
+    ),
+    outcome(
+      'abandoned',
+      '消滅',
+      '買い手が何も決めないまま立ち消えた（No Decision）。課題の切迫度を見誤った兆候として記録する',
+    ),
 
     // 保留は決着ではない。先方都合で凍結しているだけなので追跡は続け、予測からは外す。
     // 決着ステップと違って戻り先があるので、出口条件（＝再開の判断）を持つ。
@@ -245,9 +299,16 @@ export const sales = flow({
     step({
       key: 'suspended',
       name: '保留',
+      intent: '先方都合の凍結。追跡は続けるが、ヨミ（予測）からは外す',
       role: 'sales_rep',
       writes: [deal],
-      exit: [manualCheck('resumable', '再開できる状況になった')],
+      exit: [
+        manualCheck(
+          'resumable',
+          '再開できる状況になった',
+          '凍結の理由（予算時期・担当交代など）が解消したと先方に確認できたら ✓。こちらの都合では立てない',
+        ),
+      ],
       next: ['qualified'],
     }),
   ],

@@ -5,7 +5,7 @@
  * ステップの `role` から導出する（docs/product-concept.md §4-1）。
  * ユーザーへの割当は定義ではなくデータ（`employee.role`）。
  */
-import { role } from '@alt/dsl'
+import { role, type EnumValue } from '@alt/dsl'
 
 export const roles = [
   role('sales_rep', '営業担当', '案件の作成・更新、活動記録'),
@@ -17,8 +17,11 @@ export const roles = [
 
 /**
  * `employee.role` の enum 候補。宣言から導くので、ロールを足したときに
- * マスタ側の候補を書き足し忘れることがない。
+ * マスタ側の候補（キーもラベルも）を書き足し忘れることがない。
  *
  * ※ テレアポ専任がいる場合は `inside_sales` を追加する（ヒアリング項目）。
  */
-export const ROLE_KEYS: readonly string[] = roles.map((r) => r.key)
+export const ROLE_VALUES: readonly EnumValue[] = roles.map((r) => ({
+  key: r.key,
+  label: r.name,
+}))

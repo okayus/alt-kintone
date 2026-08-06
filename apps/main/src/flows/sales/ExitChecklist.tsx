@@ -8,10 +8,13 @@
  *   ここが「営業の入力負担を減らす」の実体で、手で立てられるようにすると意味が消える
  * - 手動チェックだけ押せる。可否は API の `_permissions.advance` を見るだけで、
  *   FEで認可を再判定しない（docs/product-concept.md §4-1）
+ * - **未充足の条件には「充足のしかた」（定義の `howTo`）を出す**（フェーズ5）。
+ *   「なぜ ☐ なのか」「どの欄に何を入れればよいか」が画面で分かる。
+ *   充足済みは畳む — 日常の使用でノイズにしないため
  * - 直前のステップを未充足のまま進んだ記録（`enteredUnmet`）もここに出す。
  *   「未充足でも進めるが記録に残す」が見える場所
  */
-import { exitLabel } from './steps'
+import { exitCondition, exitLabel } from './steps'
 import { dateTime } from '../../shell/format'
 import type { ExitView, FlowView, Permissions } from '../../shell/types'
 
@@ -35,16 +38,24 @@ export function ExitChecklist({ flow, permissions, busy, onToggle, nameOf }: Exi
     <div className="exit-checklist">
       <h3>次に進むための確認</h3>
       <ul>
-        {flow.exit.map((exit) => (
-          <li key={exit.key} className={exit.satisfied ? 'satisfied' : 'unsatisfied'}>
-            <ExitRow
-              exit={exit}
-              canEdit={permissions.advance === true && !busy}
-              onToggle={onToggle}
-              nameOf={nameOf}
-            />
-          </li>
-        ))}
+        {flow.exit.map((exit) => {
+          // howTo は API ではなく定義から。定義を値として import しているので
+          // 表示のためにサーバを太らせない（docs/impl/phase-4-frontend.md 決定B）
+          const howTo = exitCondition(exit.key)?.howTo
+          return (
+            <li key={exit.key} className={exit.satisfied ? 'satisfied' : 'unsatisfied'}>
+              <div className="exit-row">
+                <ExitRow
+                  exit={exit}
+                  canEdit={permissions.advance === true && !busy}
+                  onToggle={onToggle}
+                  nameOf={nameOf}
+                />
+              </div>
+              {!exit.satisfied && howTo !== undefined && <p className="exit-howto">→ {howTo}</p>}
+            </li>
+          )
+        })}
       </ul>
 
       {flow.enteredUnmet.length > 0 && <EnteredUnmet flow={flow} />}

@@ -26,16 +26,24 @@ import {
 } from '@alt/dsl'
 import { describe, expect, it } from 'vitest'
 
-const person = table('person', {
-  id: uuid().primaryKey(),
-  name: text().required(),
-})
+const person = table(
+  'person',
+  {
+    id: uuid('ID').primaryKey(),
+    name: text('氏名').required(),
+  },
+  { label: '人' },
+)
 
-const task = table('task', {
-  id: uuid().primaryKey(),
-  title: text().required(),
-  ownerId: reference('person').required(),
-})
+const task = table(
+  'task',
+  {
+    id: uuid('ID').primaryKey(),
+    title: text('タイトル').required(),
+    ownerId: reference('person', '担当').required(),
+  },
+  { label: 'タスク' },
+)
 
 const titled: Pred = {
   type: 'isNotNull',
@@ -55,13 +63,22 @@ const TEMPLATE: DefinitionBundle = {
         step({
           key: 'todo',
           name: '未着手',
+          intent: '作業を始められる状態にする',
           role: 'worker',
           reads: [person],
           writes: [task],
-          exit: [check('titled', 'タイトルが入っている', titled)],
+          exit: [check('titled', 'タイトルが入っている', 'タイトルを入れると充足する', titled)],
           next: ['done'],
         }),
-        step({ key: 'done', name: '完了', role: 'worker', writes: [task], exit: [], next: [] }),
+        step({
+          key: 'done',
+          name: '完了',
+          intent: '作業が終わった',
+          role: 'worker',
+          writes: [task],
+          exit: [],
+          next: [],
+        }),
       ],
       bindings: [bind(task, 'primary', '作業対象'), bind(person, 'reference', '担当者')],
     }),
@@ -247,7 +264,11 @@ describe('層3: 業務ルール', () => {
 
   it('undeclared-table — global なテーブルは宣言不要（§3-4 の案C）', () => {
     const errors = broken((b) => {
-      b.tables['person'] = table('person', { id: uuid().primaryKey() }, { global: true })
+      b.tables['person'] = table(
+        'person',
+        { id: uuid('ID').primaryKey() },
+        { label: '人', global: true },
+      )
       anyway<{ bindings: unknown[] }>(b.flows[0]).bindings = [bind(task, 'primary', '作業対象')]
     })
     expect(rules(errors)).not.toContain('undeclared-table')
@@ -263,7 +284,7 @@ describe('層3: 業務ルール', () => {
   it('duplicate-exit-key', () => {
     const errors = broken((b) => {
       anyway<{ exit: unknown[] }>(b.flows[0]?.steps[0]).exit.push(
-        manualCheck('titled', '同じキーの手動チェック'),
+        manualCheck('titled', '同じキーの手動チェック', '重複キーの検査用'),
       )
     })
     expect(rules(errors)).toContain('duplicate-exit-key')
@@ -271,7 +292,7 @@ describe('層3: 業務ルール', () => {
 
   it('orphan-table — どのフローからも使われていない', () => {
     const errors = broken((b) => {
-      b.tables['memo'] = table('memo', { id: uuid().primaryKey() })
+      b.tables['memo'] = table('memo', { id: uuid('ID').primaryKey() }, { label: 'メモ' })
     })
     expect(rules(errors)).toEqual(['orphan-table'])
   })

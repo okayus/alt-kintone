@@ -5,6 +5,7 @@ import {
   exprSchema,
   literalSchema,
   predSchema,
+  referencedFields,
   ROOT_SOURCE,
   type Pred,
 } from './ast.js'
@@ -204,5 +205,109 @@ describe('相互再帰', () => {
       where: { type: 'isNotNull', operand: { type: 'field', source: 'a', path: [] } },
     }
     expect(predSchema.safeParse(pred).success).toBe(false)
+  })
+})
+
+describe('referencedFields（表示用。TS/Go の契約ではない）', () => {
+  // docs/impl/phase-5-flow-reference.md 決定D:
+  // 「この条件が見ているデータ」を機械抽出して howTo のズレを目視できるようにする
+
+  it('compare の両辺から field を拾う', () => {
+    const pred: Pred = {
+      type: 'compare',
+      op: 'gt',
+      left: field(['initialBilling']),
+      right: lit(0),
+    }
+    expect(referencedFields(pred)).toEqual([{ source: ROOT_SOURCE, path: ['initialBilling'] }])
+  })
+
+  it('or の中を出現順に、重複なく拾う', () => {
+    // 営業フローの「金額欄が埋まっている」と同じ形
+    const pred: Pred = {
+      type: 'or',
+      operands: [
+        { type: 'compare', op: 'gt', left: field(['initialBilling']), right: lit(0) },
+        { type: 'compare', op: 'gt', left: field(['monthlyBilling']), right: lit(0) },
+        // 同じフィールドがもう一度出ても増えない
+        { type: 'isNotNull', operand: field(['initialBilling']) },
+      ],
+    }
+    expect(referencedFields(pred)).toEqual([
+      { source: ROOT_SOURCE, path: ['initialBilling'] },
+      { source: ROOT_SOURCE, path: ['monthlyBilling'] },
+    ])
+  })
+
+  it('exists の中はエイリアスではなくテーブル名で返す', () => {
+    // 営業フローの「決裁者に会えている」と同じ形
+    const pred: Pred = {
+      type: 'exists',
+      table: 'activity',
+      alias: 'a',
+      where: {
+        type: 'and',
+        operands: [
+          { type: 'compare', op: 'eq', left: field(['dealId'], 'a'), right: field(['id']) },
+          { type: 'isNotNull', operand: field(['completedAt'], 'a') },
+          {
+            type: 'compare',
+            op: 'eq',
+            left: field(['contactId', 'isDecisionMaker'], 'a'),
+            right: lit(true),
+          },
+        ],
+      },
+    }
+    expect(referencedFields(pred)).toEqual([
+      { source: 'activity', path: ['dealId'] },
+      { source: ROOT_SOURCE, path: ['id'] },
+      { source: 'activity', path: ['completedAt'] },
+      { source: 'activity', path: ['contactId', 'isDecisionMaker'] },
+    ])
+  })
+
+  it('aggregate の集計対象フィールドと where も辿る', () => {
+    const pred: Pred = {
+      type: 'compare',
+      op: 'gte',
+      left: {
+        type: 'aggregate',
+        fn: 'sum',
+        table: 'contract',
+        alias: 'c',
+        field: ['monthlyProfit'],
+        where: { type: 'compare', op: 'eq', left: field(['status'], 'c'), right: lit('active') },
+      },
+      right: lit(100000),
+    }
+    expect(referencedFields(pred)).toEqual([
+      { source: 'contract', path: ['monthlyProfit'] },
+      { source: 'contract', path: ['status'] },
+    ])
+  })
+
+  it('入れ子の exists で内側のエイリアスが外側を隠す', () => {
+    const pred: Pred = {
+      type: 'exists',
+      table: 'contract',
+      alias: 'x',
+      where: {
+        type: 'exists',
+        table: 'contractChange',
+        // 外側と同じエイリアス。内側の field は contractChange のもの
+        alias: 'x',
+        where: { type: 'isNotNull', operand: field(['changedAt'], 'x') },
+      },
+    }
+    expect(referencedFields(pred)).toEqual([{ source: 'contractChange', path: ['changedAt'] }])
+  })
+
+  it('not と in も辿る', () => {
+    const pred: Pred = {
+      type: 'not',
+      operand: { type: 'in', left: field(['status']), values: ['lost', 'abandoned'] },
+    }
+    expect(referencedFields(pred)).toEqual([{ source: ROOT_SOURCE, path: ['status'] }])
   })
 })

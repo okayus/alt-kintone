@@ -7,19 +7,12 @@
  * 編集可否・遷移可否は API が返す `_permissions` を見るだけ。**FEで認可を再判定しない**
  * （§4-1）。再判定すると認可が2箇所に分かれて必ず乖離する。
  */
+import { activity as activityDef, deal as dealDef, sales } from '@alt/definitions'
 import { useCallback, useEffect, useState } from 'react'
 import { AdvanceButtons } from './AdvanceButtons'
 import { DealForm } from './DealForm'
 import { ExitChecklist } from './ExitChecklist'
-import {
-  ACTIVITY_RESULT,
-  ACTIVITY_TYPE,
-  CONFIDENCE,
-  DEAL_STATUS,
-  DEAL_TYPE,
-  PRODUCT_TYPE,
-  label,
-} from './labels'
+import { fieldLabel, label } from './labels'
 import { exitLabel, stepName } from './steps'
 import { StepTrack } from './StepTrack'
 import type { ScreenProps } from '../../shell/App'
@@ -99,9 +92,12 @@ export function DealDetail({
       <header className="deal-head">
         <h2>{deal.title}</h2>
         <p className="muted">
-          {orDash(company?.name)} / {label(PRODUCT_TYPE, deal.productType)} /{' '}
-          {label(DEAL_TYPE, deal.dealType)} / 状態 {label(DEAL_STATUS, deal.status)}
-          {deal.confidence !== null && <> / ヨミ {label(CONFIDENCE, deal.confidence)}</>}
+          {orDash(company?.name)} / {label(dealDef.fields.productType, deal.productType)} /{' '}
+          {label(dealDef.fields.dealType, deal.dealType)} / 状態{' '}
+          {label(dealDef.fields.status, deal.status)}
+          {deal.confidence !== null && (
+            <> / ヨミ {label(dealDef.fields.confidence, deal.confidence)}</>
+          )}
         </p>
       </header>
 
@@ -109,6 +105,10 @@ export function DealDetail({
         <p className="muted">この案件は業務フローに乗っていない。</p>
       ) : (
         <section className="flow-panel">
+          <p className="flow-panel-link">
+            {/* 全体像・他ステップの条件・遷移の可能性は参照画面で（フェーズ5） */}
+            <a href={href.flow(sales.key, flow.step)}>フロー全体を見る →</a>
+          </p>
           <StepTrack flow={flow} />
 
           <ExitChecklist
@@ -203,21 +203,22 @@ function advanceNotice(to: string, unmet: readonly string[]): string {
 }
 
 function DealFacts({ deal, owner }: { deal: Deal; owner: string }) {
+  const name = (field: string) => fieldLabel(dealDef, field)
   return (
     <dl className="facts">
-      <Fact label="一時金・請求額" value={yen(deal.initialBilling)} />
-      <Fact label="一時金・自社収益" value={yen(deal.initialProfit)} />
-      <Fact label="月額・請求額" value={yen(deal.monthlyBilling)} />
-      <Fact label="月額・自社収益" value={yen(deal.monthlyProfit)} />
+      <Fact label={name('initialBilling')} value={yen(deal.initialBilling)} />
+      <Fact label={name('initialProfit')} value={yen(deal.initialProfit)} />
+      <Fact label={name('monthlyBilling')} value={yen(deal.monthlyBilling)} />
+      <Fact label={name('monthlyProfit')} value={yen(deal.monthlyProfit)} />
       <Fact
-        label="契約期間"
+        label={name('contractMonths')}
         value={deal.contractMonths === null ? '—' : `${deal.contractMonths} ヶ月`}
       />
-      <Fact label="見込み受注月" value={orDash(deal.expectedCloseMonth)} />
-      <Fact label="決着日" value={orDash(deal.closedAt)} />
-      <Fact label="競合先" value={orDash(deal.competitor)} />
-      <Fact label="担当" value={owner} />
-      <Fact label="メモ" value={orDash(deal.note)} wide />
+      <Fact label={name('expectedCloseMonth')} value={orDash(deal.expectedCloseMonth)} />
+      <Fact label={name('closedAt')} value={orDash(deal.closedAt)} />
+      <Fact label={name('competitor')} value={orDash(deal.competitor)} />
+      <Fact label={name('ownerEmployeeId')} value={owner} />
+      <Fact label={name('note')} value={orDash(deal.note)} wide />
     </dl>
   )
 }
@@ -248,11 +249,12 @@ function ActivityList({
     <table className="activity-list">
       <thead>
         <tr>
+          {/* 「日時」は予定日時と実施日時の合成なので手書き */}
           <th>日時</th>
-          <th>種別</th>
-          <th>件名</th>
-          <th>結果</th>
-          <th>担当</th>
+          <th>{fieldLabel(activityDef, 'type')}</th>
+          <th>{fieldLabel(activityDef, 'subject')}</th>
+          <th>{fieldLabel(activityDef, 'result')}</th>
+          <th>{fieldLabel(activityDef, 'ownerEmployeeId')}</th>
         </tr>
       </thead>
       <tbody>
@@ -263,9 +265,9 @@ function ActivityList({
                 ? day(activity.completedAt)
                 : `${day(activity.scheduledAt)} 予定`}
             </td>
-            <td>{label(ACTIVITY_TYPE, activity.type)}</td>
+            <td>{label(activityDef.fields.type, activity.type)}</td>
             <td>{activity.subject}</td>
-            <td>{label(ACTIVITY_RESULT, activity.result)}</td>
+            <td>{label(activityDef.fields.result, activity.result)}</td>
             <td>{nameOf(activity.ownerEmployeeId)}</td>
           </tr>
         ))}

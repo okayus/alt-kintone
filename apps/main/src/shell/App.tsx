@@ -8,7 +8,7 @@
  * **FEは1つのアプリに統合する**（§4-3）。業務フローごとにアプリを分けない。
  * いまナビに項目が1つしか無いのは、フローが1本しか定義されていないからにすぎない。
  */
-import { sales } from '@alt/definitions'
+import { flows, sales } from '@alt/definitions'
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, type Client } from './api'
 import { asOfParam } from './format'
@@ -16,6 +16,7 @@ import { asOfParam } from './format'
 import type { DevUser } from './auth/dev-user'
 import { href, useRoute } from './router'
 import type { Company, Employee } from './types'
+import { FlowReference } from '../flows/FlowReference'
 import { DealDetail } from '../flows/sales/DealDetail'
 import { DealList } from '../flows/sales/DealList'
 
@@ -129,6 +130,16 @@ export function App({ client, devUsers }: AppProps) {
         <a className={route.name === 'deals' ? 'current' : ''} href={href.deals()}>
           案件
         </a>
+        {/* フローが増えても壊れない形で回す（フェーズ5）。1本のうちは総称で出す */}
+        {flows.map((flow) => (
+          <a
+            key={flow.key}
+            className={route.name === 'flow' && route.key === flow.key ? 'current' : ''}
+            href={href.flow(flow.key)}
+          >
+            {flows.length === 1 ? '業務フロー' : flow.name}
+          </a>
+        ))}
       </nav>
 
       {asOf !== '' && (
@@ -142,8 +153,11 @@ export function App({ client, devUsers }: AppProps) {
       <main className="app-main">
         {route.name === 'deals' ? (
           <DealList {...screen} />
-        ) : (
+        ) : route.name === 'deal' ? (
           <DealDetail {...screen} id={route.id} />
+        ) : (
+          // 参照画面は API を叩かないので ScreenProps を受け取らない（決定H）
+          <FlowReference flowKey={route.key} currentStep={route.step} />
         )}
       </main>
     </div>

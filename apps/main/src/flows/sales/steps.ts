@@ -15,7 +15,7 @@
  * 表示順が業務の順序とズレるなら、それは定義に順序の情報が足りないということ。
  */
 import { sales } from '@alt/definitions'
-import type { StepDef } from '@alt/dsl'
+import type { ExitCondition, StepDef } from '@alt/dsl'
 
 export type Lane = 'progress' | 'outcome'
 
@@ -39,16 +39,21 @@ export function stepName(key: string): string {
 }
 
 /**
- * 出口条件のキー → ラベル。`enteredUnmet`（キーの配列）を人が読める形にするのに使う。
+ * 出口条件のキー → 定義。ラベルのほか `howTo`（充足のしかた）を画面に出すのに使う。
  *
  * ステップを指定せずフロー全体から探す。`enteredUnmet` に入っているのは**直前の**
  * ステップの出口条件キーで、どのステップから来たかを API は返していないため。
  * キーがフロー内で一意なのは `alt validate` が保証している。
  */
-export function exitLabel(exitKey: string): string {
+export function exitCondition(exitKey: string): ExitCondition | undefined {
   for (const step of sales.steps) {
     const found = step.exit.find((exit) => exit.key === exitKey)
-    if (found !== undefined) return found.label
+    if (found !== undefined) return found
   }
-  return exitKey
+  return undefined
+}
+
+/** 出口条件のキー → ラベル。`enteredUnmet`（キーの配列）を人が読める形にするのに使う。 */
+export function exitLabel(exitKey: string): string {
+  return exitCondition(exitKey)?.label ?? exitKey
 }

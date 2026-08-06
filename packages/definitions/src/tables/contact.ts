@@ -6,14 +6,17 @@
  */
 import { boolean, reference, table, text, uuid } from '@alt/dsl'
 
-export const contact = table('contact', {
-  id: uuid().primaryKey(),
-  companyId: reference('company').required(),
-  name: text().required(),
-  /** 役職。 */
-  title: text(),
-  phone: text(),
-  email: text(),
-  isDecisionMaker: boolean().required(),
-  note: text(),
-})
+export const contact = table(
+  'contact',
+  {
+    id: uuid('ID').primaryKey(),
+    companyId: reference('company', '顧客企業').required(),
+    name: text('氏名').required(),
+    title: text('役職'),
+    phone: text('電話'),
+    email: text('メール'),
+    isDecisionMaker: boolean('決裁権').required(),
+    note: text('備考'),
+  },
+  { label: '先方担当者' },
+)

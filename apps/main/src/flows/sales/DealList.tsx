@@ -7,8 +7,9 @@
  * 現在ステップと未確認件数が並ぶのが要点。フローに乗ったレコードの一覧が
  * 「いまどこにいるか」を持つのは、`_flow_state` を第一級にした帰結。
  */
+import { deal as dealDef } from '@alt/definitions'
 import { useEffect, useState } from 'react'
-import { DEAL_TYPE, PRODUCT_TYPE, label } from './labels'
+import { fieldLabel, label } from './labels'
 import type { ScreenProps } from '../../shell/App'
 import { orDash, yen } from '../../shell/format'
 import { href } from '../../shell/router'
@@ -42,13 +43,15 @@ export function DealList({ client, masters, asOf, user, onError }: ScreenProps) 
     <table className="deal-list">
       <thead>
         <tr>
-          <th>案件</th>
-          <th>顧客</th>
-          <th>商材</th>
-          <th>区分</th>
+          {/* 列見出しは定義のフィールドラベル。「自社収益」「現在ステップ」だけは
+              単一フィールドでない（金額2つの合成 / _flow_state）ので手書き */}
+          <th>{fieldLabel(dealDef, 'title')}</th>
+          <th>{fieldLabel(dealDef, 'companyId')}</th>
+          <th>{fieldLabel(dealDef, 'productType')}</th>
+          <th>{fieldLabel(dealDef, 'dealType')}</th>
           <th className="num">自社収益</th>
           <th>現在ステップ</th>
-          <th>担当</th>
+          <th>{fieldLabel(dealDef, 'ownerEmployeeId')}</th>
         </tr>
       </thead>
       <tbody>
@@ -58,8 +61,8 @@ export function DealList({ client, masters, asOf, user, onError }: ScreenProps) 
               <a href={href.deal(deal.id)}>{deal.title}</a>
             </td>
             <td>{orDash(masters.companies.get(deal.companyId)?.name)}</td>
-            <td>{label(PRODUCT_TYPE, deal.productType)}</td>
-            <td>{label(DEAL_TYPE, deal.dealType)}</td>
+            <td>{label(dealDef.fields.productType, deal.productType)}</td>
+            <td>{label(dealDef.fields.dealType, deal.dealType)}</td>
             <td className="num">
               <Profit deal={deal} />
             </td>

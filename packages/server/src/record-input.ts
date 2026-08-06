@@ -75,14 +75,17 @@ function checkType(table: string, name: string, field: FieldDef, value: unknown)
       return Number.isInteger(value) ? value : fail('整数')
     case 'boolean':
       return typeof value === 'boolean' ? value : fail('true / false')
-    case 'enum':
-      if (typeof value !== 'string' || !(field.values ?? []).includes(value)) {
+    case 'enum': {
+      // 入力に来るのは key（DB に入る識別子）。label は表示専用で API には現れない
+      const values = field.values ?? []
+      if (typeof value !== 'string' || !values.some((v) => v.key === value)) {
         throw badRequest(
           `${table}.${name} に "${String(value)}" は入れられない`,
-          `候補: ${(field.values ?? []).join(', ')}`,
+          `候補: ${values.map((v) => v.key).join(', ')}`,
         )
       }
       return value
+    }
     case 'date':
       return typeof value === 'string' && DATE.test(value) ? value : fail('YYYY-MM-DD')
     case 'yearMonth':

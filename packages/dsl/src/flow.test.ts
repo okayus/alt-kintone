@@ -14,22 +14,32 @@ import { boolean, integer, reference, table, text, uuid } from './table.js'
 
 const employee = table(
   'employee',
-  { id: uuid().primaryKey(), name: text().required() },
-  {
-    global: true,
-  },
+  { id: uuid('ID').primaryKey(), name: text('氏名').required() },
+  { label: '従業員', global: true },
 )
-const company = table('company', { id: uuid().primaryKey(), name: text().required() })
-const deal = table('deal', {
-  id: uuid().primaryKey(),
-  companyId: reference('company').required(),
-  initialBilling: integer(),
-})
-const activity = table('activity', {
-  id: uuid().primaryKey(),
-  dealId: reference('deal'),
-  completed: boolean(),
-})
+const company = table(
+  'company',
+  { id: uuid('ID').primaryKey(), name: text('名称').required() },
+  { label: '顧客企業' },
+)
+const deal = table(
+  'deal',
+  {
+    id: uuid('ID').primaryKey(),
+    companyId: reference('company', '顧客企業').required(),
+    initialBilling: integer('一時金・請求額'),
+  },
+  { label: '案件' },
+)
+const activity = table(
+  'activity',
+  {
+    id: uuid('ID').primaryKey(),
+    dealId: reference('deal', '案件'),
+    completed: boolean('実施済み'),
+  },
+  { label: '活動' },
+)
 
 const billingEntered: Pred = {
   type: 'compare',
@@ -49,24 +59,27 @@ function sampleFlow(): FlowDef {
       step({
         key: 'contacted',
         name: '接触',
+        intent: '買い手が話を聞く気になった状態にする',
         role: 'sales_rep',
         reads: [company],
         writes: [activity],
-        exit: [manualCheck('reached', '担当者と話せた')],
+        exit: [manualCheck('reached', '担当者と話せた', '本人と直接話せたら ✓')],
         next: ['qualified'],
       }),
       step({
         key: 'qualified',
         name: 'ヒアリング',
+        intent: '買い手が課題と予算を認識している状態にする',
         role: 'sales_rep',
         reads: [company, employee],
         writes: [deal, activity],
-        exit: [check('budget', '予算感を確認した', billingEntered)],
+        exit: [check('budget', '予算感を確認した', '案件に金額を入れると充足する', billingEntered)],
         next: ['won'],
       }),
       step({
         key: 'won',
         name: '受注',
+        intent: '買い手が発注を決めた',
         role: 'sales_rep',
         exit: [],
         next: [],
@@ -93,6 +106,10 @@ describe('フロー定義', () => {
     })
   })
 
+  it('ステップは意図（intent）を持つ（フェーズ5 決定E）', () => {
+    expect(sampleFlow().steps[0]?.intent).toBe('買い手が話を聞く気になった状態にする')
+  })
+
   it('zod 検証を通る', () => {
     expect(flowDefSchema.safeParse(sampleFlow()).success).toBe(true)
   })
@@ -115,16 +132,32 @@ describe('フロー定義', () => {
     expect(flowDefSchema.safeParse(broken).success).toBe(false)
   })
 
+  it('intent や howTo が空だと弾く（書き忘れを構文層で止める）', () => {
+    const noIntent = sampleFlow()
+    ;(noIntent.steps[0] as { intent: string }).intent = ''
+    expect(flowDefSchema.safeParse(noIntent).success).toBe(false)
+
+    const noHowTo = sampleFlow()
+    ;(noHowTo.steps[1]!.exit[0] as { howTo: string }).howTo = ''
+    expect(flowDefSchema.safeParse(noHowTo).success).toBe(false)
+  })
+
   it('出口条件は明示キーで識別する（ラベルとは独立）', () => {
-    const auto = check('budget', '予算感を確認した', billingEntered)
-    const manual = manualCheck('problem', '課題を確認した')
+    const auto = check('budget', '予算感を確認した', '金額を入れると充足する', billingEntered)
+    const manual = manualCheck('problem', '課題を確認した', '先方の言葉で聞けたら ✓')
     expect(auto).toEqual({
       kind: 'auto',
       key: 'budget',
       label: '予算感を確認した',
+      howTo: '金額を入れると充足する',
       condition: billingEntered,
     })
-    expect(manual).toEqual({ kind: 'manual', key: 'problem', label: '課題を確認した' })
+    expect(manual).toEqual({
+      kind: 'manual',
+      key: 'problem',
+      label: '課題を確認した',
+      howTo: '先方の言葉で聞けたら ✓',
+    })
   })
 })
 
@@ -152,7 +185,16 @@ describe('使用テーブルと access の導出', () => {
       target: deal,
       initial: 's',
       steps: [
-        step({ key: 's', name: 's', role: 'r', reads: [deal], writes: [deal], exit: [], next: [] }),
+        step({
+          key: 's',
+          name: 's',
+          intent: 'i',
+          role: 'r',
+          reads: [deal],
+          writes: [deal],
+          exit: [],
+          next: [],
+        }),
       ],
       bindings: [bind(deal, 'primary', 'p')],
     })
@@ -160,7 +202,7 @@ describe('使用テーブルと access の導出', () => {
   })
 
   it('宣言だけあって使われていないテーブルは導出結果に出ない（validate が警告する材料）', () => {
-    const quota = table('quota', { id: uuid().primaryKey() })
+    const quota = table('quota', { id: uuid('ID').primaryKey() }, { label: '目標' })
     const sales = sampleFlow()
     const usage = usedTables({
       ...sales,

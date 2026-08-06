@@ -373,14 +373,23 @@ tbody tr:last-child td {
 }
 
 .exit-checklist li {
+  padding: 3px 0;
+}
+
+.exit-row {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 3px 0;
 }
 
 .exit-checklist li.unsatisfied .exit-label {
   color: var(--warn);
+}
+
+/* 充足のしかた（定義の howTo）。未充足のときだけ開く */
+.exit-howto {
+  margin: 1px 0 3px 28px;
+  color: var(--muted);
 }
 
 .exit-checklist .check {
@@ -466,5 +475,206 @@ tbody tr:last-child td {
 }
 
 .deal-version {
+  color: var(--muted);
+}
+
+/* --- 業務フロー参照 ------------------------------------------------------ */
+
+.flow-panel-link {
+  margin: 0 0 10px;
+}
+
+.flow-ref-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.flow-ref-head p {
+  margin: 2px 0 16px;
+}
+
+.ref-panel,
+.ref-card {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.ref-panel h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+/* --- 遷移グラフ --- */
+
+.flow-graph {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.flow-graph .edge,
+.flow-legend-line .edge {
+  fill: none;
+  stroke: #9aa3ad;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.flow-graph .edge.skip,
+.flow-legend-line .edge.skip {
+  stroke-dasharray: 8 5;
+}
+
+.flow-graph .edge.back,
+.flow-legend-line .edge.back {
+  stroke-dasharray: 2 4;
+}
+
+.flow-graph .edge.hot {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+}
+
+.flow-graph .edge.dim {
+  opacity: 0.18;
+}
+
+.flow-arrow-head {
+  fill: #9aa3ad;
+}
+
+.flow-graph .node {
+  cursor: pointer;
+}
+
+.flow-graph .node rect {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.flow-graph .node text {
+  font-size: 13px;
+  fill: var(--text);
+}
+
+.flow-graph .node.terminal rect {
+  fill: #f0f2f5;
+}
+
+.flow-graph .node.current rect {
+  fill: #e8eefb;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.flow-graph .node.selected rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.flow-graph .node.dim {
+  opacity: 0.35;
+}
+
+.flow-legend {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.flow-legend .muted {
+  margin-left: auto;
+}
+
+/* --- ステップのカード --- */
+
+.ref-card {
+  scroll-margin-top: 12px;
+}
+
+.ref-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px #dce7fb;
+}
+
+.ref-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.ref-card-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.ref-role {
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ref-card h4 {
+  margin: 12px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ref-intent {
+  margin: 0;
+}
+
+.ref-exits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ref-exits li {
+  padding: 5px 0;
+}
+
+.ref-exits .exit-howto {
+  margin-left: 0;
+}
+
+.ref-sees {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ref-neighbors {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.ref-jump {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ref-jump:hover {
+  text-decoration: underline;
+}
+
+.ref-kind {
   color: var(--muted);
 }
