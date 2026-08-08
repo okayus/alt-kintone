@@ -46,3 +46,4 @@ TS のユニットテストをそのまま仕様にすると、Go へ移すと�
 | `aggregate-count.json` | 集計（レベル3）と、空集合の COUNT が 0 であること |
 | `row-level-auth.json` | コンテキスト変数のバインド。出口条件と同じ AST を認可にも使う |
 | `as-of-past-version.json` | 有効期間型。過去バージョンを見る |
+| `contains-substring.json` | 部分一致（AST_VERSION 2）。**`value` はパターンではない** — `%` が素の文字として扱われること |

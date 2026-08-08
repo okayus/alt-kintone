@@ -8,6 +8,7 @@
  *    本番エントリを作るときは**別ファイル**にして、ここを持ち込まないこと
  *    （docs/implementation.md 決定8「本番ビルドにコードごと含めない」）。
  */
+import { NuqsAdapter } from 'nuqs/adapters/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './shell/App'
@@ -20,9 +21,17 @@ if (container === null) throw new Error('#root が index.html に無い')
 
 createRoot(container).render(
   <StrictMode>
-    <App
-      client={createClient(devUserHeaders)}
-      devUsers={{ users: DEV_USERS, current: currentDevUser(), onChange: setDevUser }}
-    />
+    {/*
+      URL のクエリに状態を置くためのアダプタ（docs/impl/phase-6-list-grid.md 論点D 案A）。
+      **ルータはハッシュのまま**で、nuqs が触るのは `location.search` だけ
+      （`new URL(location.href)` の `.search` を差し替える実装なので hash は保たれる）。
+      結果として一覧 → 詳細 → 戻る の往復でフィルタが残る。
+    */}
+    <NuqsAdapter>
+      <App
+        client={createClient(devUserHeaders)}
+        devUsers={{ users: DEV_USERS, current: currentDevUser(), onChange: setDevUser }}
+      />
+    </NuqsAdapter>
   </StrictMode>,
 )

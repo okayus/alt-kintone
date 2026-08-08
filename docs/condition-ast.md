@@ -53,6 +53,7 @@ DSL では `a.contact.isDecisionMaker` と書けるが、**ビルダーが `cont
 type Pred =
   | { type: 'compare';   op: 'eq'|'ne'|'gt'|'gte'|'lt'|'lte'; left: Expr; right: Expr }
   | { type: 'in';        left: Expr; values: (string|number|boolean)[] }
+  | { type: 'contains';  operand: Expr; value: string }      // AST_VERSION 2
   | { type: 'isNull';    operand: Expr }
   | { type: 'isNotNull'; operand: Expr }
   | { type: 'and';       operands: Pred[] }
@@ -62,6 +63,20 @@ type Pred =
 ```
 
 `exists` は `count(...) > 0` で表現できるが、SQL では `EXISTS` のほうが効率的なので独立ノードにする。
+
+#### `contains`（部分一致）— AST_VERSION 2 で追加
+
+`value` は**探す文字列そのものであってパターンではない**。`%` や `_` を書いてもワイルドカードにならず、
+素の文字として一致する。名前を `like` にしなかったのはこのため
+（`impl/phase-6-list-grid.md` 決定B。一覧のフィルタで案件名を絞るために足した）。
+
+パターン言語を契約に持ち込むと、エスケープ規則と方言差を TS と Go の両方に配ることになる。
+**`LIKE` パターンへの変換とエスケープは SQL 変換層の責務**にして、契約は「部分一致」という意味だけ持つ。
+
+- 空文字は「全件一致」で条件として意味が無いので構文層（zod）で弾く
+- ⚠ **大文字小文字の扱いは方言差**。SQLite の `LIKE` は ASCII だけ大小を同一視し、PostgreSQL は区別する。
+  日本語では差が出ないので v1 では揃えない（揃えるなら両方を `lower()` に通すか、PG 側を `ILIKE` にする）。
+  §5-5 に変換規則を書いた
 
 ### 2-3. JSON の例
 
@@ -180,6 +195,27 @@ SQL 関数に変換せず**パラメータとしてバインド**する。方言
 
 `product-concept.md` §4-0 のとおり、**ローカルは SQLite、本番は PostgreSQL の可能性**がある。SQL 生成層は方言を差し替えられる形にする。AST 自体は方言非依存。
 
+### 5-5. `contains` → `LIKE`
+
+`contains` は「部分一致」という意味だけを持ち、パターンへの変換はこの層で行う（§2-2）。
+
+```
+{ type: 'contains', operand: <expr>, value: '看板' }
+  → <expr> LIKE ? ESCAPE '!'      params: ['%看板%']
+```
+
+規則:
+
+1. `value` の中の `!` `%` `_` を `!` でエスケープする（`50%` → `50!%`）。
+   **ワイルドカードを殺すのがこの手順の目的**
+2. 前後を `%` で挟んだものを**パラメータとして渡す**。`'%' || ? || '%'` と SQL 側で組まない
+   （連結演算子の方言差を持ち込まないため）
+3. エスケープ文字は `!`。バックスラッシュにしないのは、PostgreSQL では
+   `standard_conforming_strings` の設定で文字列リテラル中の `\` の解釈が変わるため
+
+三値論理は他のノードと同じ。**`operand` が NULL なら結果は NULL**（偽ではない）。
+適合テスト `testdata/condition-eval/contains-substring.json` がこの3点を押さえている。
+
 ---
 
 ## 6. 検証: `domain-model.md` の出口条件をすべて表現できるか
@@ -246,7 +282,8 @@ SQL 関数に変換せず**パラメータとしてバインド**する。方言
 | 項目 | 扱い |
 |---|---|
 | 任意のコード実行 | 不可（方針1）。判定できないものは手動チェックにする |
-| 文字列関数（部分一致・連結） | v1では持たない。必要になったら `like` を足す |
+| ~~文字列関数（部分一致）~~ | **`contains` として追加した**（AST_VERSION 2、2026-08-08。§2-2）。一覧のフィルタで案件名を絞るため |
+| 文字列関数（連結・前方/後方一致） | v1では持たない。連結は表示の関心、前方一致は必要になってから |
 | 日付演算（3ヶ月後など） | v1では持たない。必要なら `dateAdd` ノードを足す |
 | ウィンドウ関数・サブクエリの入れ子 | 不可 |
 | 集計の入れ子（`count` の中で `count`） | 不可 |

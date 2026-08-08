@@ -40,6 +40,7 @@ const deal = table(
   {
     id: uuid('ID').primaryKey(),
     companyId: reference('company', '顧客企業').required(),
+    title: text('案件名').required(),
     initialBilling: integer('一時金・請求額').required(),
     monthlyBilling: integer('月額・請求額').required(),
     expectedCloseMonth: yearMonth('見込み受注月'),
@@ -140,6 +141,32 @@ describe('論理演算', () => {
     const r = compile({ type: 'in', left: field(['status']), values: ['won', 'lost'] })
     expect(r.sql).toBe('"d"."status" IN (?, ?)')
     expect(r.params).toEqual(['won', 'lost'])
+  })
+})
+
+// docs/impl/phase-6-list-grid.md 決定B。パターン言語を契約に持ち込まないので、
+// LIKE への変換とエスケープはこの層の責務になる
+describe('contains（部分一致）', () => {
+  it('前後を % で挟んだパターンをバインドする', () => {
+    const r = compile({ type: 'contains', operand: field(['title']), value: '看板' })
+    expect(r.sql).toBe(`"d"."title" LIKE ? ESCAPE '!'`)
+    expect(r.params).toEqual(['%看板%'])
+  })
+
+  it('ワイルドカードは殺す（value はパターンではない）', () => {
+    const r = compile({ type: 'contains', operand: field(['title']), value: '50%_引き' })
+    expect(r.params).toEqual(['%50!%!_引き%'])
+  })
+
+  it('エスケープ文字そのものもエスケープする', () => {
+    const r = compile({ type: 'contains', operand: field(['title']), value: 'a!b' })
+    expect(r.params).toEqual(['%a!!b%'])
+  })
+
+  it('リレーションを辿った先にも使える', () => {
+    const r = compile({ type: 'contains', operand: field(['companyId', 'name']), value: '食堂' })
+    expect(r.sql).toContain(`LIKE ? ESCAPE '!'`)
+    expect(r.params).toEqual(['%食堂%'])
   })
 })
 

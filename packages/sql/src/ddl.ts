@@ -84,6 +84,30 @@ export function currentRowIndexSql(table: TableDef, dialect: Dialect = sqlite): 
   return currentUniqueIndexSql(q, `${table.name}_current`, table.name, ['id'])
 }
 
+/**
+ * 外部キーの索引（docs/impl/phase-6-list-grid.md 決定G）。
+ *
+ * **定義には書かせない。** 有効期間型の列と同じで、`reference()` から機械的に決まるものは
+ * DDL が付ける。索引の設計を定義者（＝AI）の判断に委ねると、書き忘れが性能として現れて
+ * 原因が分からなくなる。
+ *
+ * これが要るのは出口条件のためでもある。自動判定は相関サブクエリで参照先を引くので
+ * （`decision_maker_met` は activity → contact）、外部キーに索引が無いと一覧のたびに
+ * 全表走査が走る。実測（案件10,005件・活動15,092件）で **145ms → 9.5ms**
+ * （`docs/impl/phase-6-list-grid.md` §7-4）。
+ *
+ * 部分索引（`WHERE valid_to IS NULL`）にはしない。`as_of` の読みが索引を使えなくなる。
+ */
+export function foreignKeyIndexSql(table: TableDef, dialect: Dialect = sqlite): string[] {
+  const q = (id: string) => dialect.quote(id)
+  return Object.entries(table.fields)
+    .filter(([, def]) => def.references !== undefined)
+    .map(([name]) => {
+      const column = toColumnName(name)
+      return `CREATE INDEX ${q(`${table.name}_${column}`)} ON ${q(table.name)} (${q(column)})`
+    })
+}
+
 /** `valid_to IS NULL` の行だけを対象にしたユニーク索引。 */
 function currentUniqueIndexSql(q: Quote, name: string, table: string, columns: string[]): string {
   return (
@@ -174,8 +198,8 @@ export function platformTablesSql(dialect: Dialect = sqlite): string[] {
 /**
  * 定義バンドル全体のスキーマ。適用の順に並べる。
  *
- * プラットフォームテーブルが先。業務テーブルは定義ごとに CREATE TABLE と
- * 現在行のユニーク索引の2本（有効期間型では id が重複するため索引が要る）。
+ * プラットフォームテーブルが先。業務テーブルは定義ごとに CREATE TABLE と、
+ * 現在行のユニーク索引（有効期間型では id が重複するため）と、外部キーの索引。
  *
  * 純関数（DB を触らない）。`alt apply` とバックエンドのテストの両方が使う。
  */
@@ -185,6 +209,7 @@ export function schemaStatements(bundle: DefinitionBundle, dialect: Dialect = sq
     ...Object.values(bundle.tables).flatMap((table) => [
       createTableSql(table, dialect),
       currentRowIndexSql(table, dialect),
+      ...foreignKeyIndexSql(table, dialect),
     ]),
   ]
 }

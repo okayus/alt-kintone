@@ -20,7 +20,7 @@ import { z } from 'zod'
  * TS 側と Go 側の契約が食い違うと静かに壊れるため、ノードの追加・変更時に
  * この値を上げ、受け取った定義のバージョンを検証できるようにする。
  */
-export const AST_VERSION = 1
+export const AST_VERSION = 2
 
 // ---------------------------------------------------------------------------
 // Expr — 値を返す
@@ -108,6 +108,23 @@ export interface In {
   values: (string | number | boolean)[]
 }
 
+/**
+ * 部分一致（AST_VERSION 2 で追加。docs/impl/phase-6-list-grid.md 決定B）。
+ *
+ * **`like` ではなく `contains`。** `value` は探す文字列そのものであって
+ * パターンではない — `%` や `_` を書いてもワイルドカードにならない。パターン言語を
+ * TS と Go の契約に持ち込むと、エスケープ規則と方言差を両方の実装に配ることになる。
+ * SQL の `LIKE` パターンへの変換とエスケープは**コンパイラの責務**。
+ *
+ * ⚠ **大文字小文字の扱いは方言差**（SQLite は ASCII だけ大小同一視、PostgreSQL は区別）。
+ * 日本語では差が出ないので v1 は揃えない（docs/condition-ast.md §5-5）。
+ */
+export interface Contains {
+  type: 'contains'
+  operand: Expr
+  value: string
+}
+
 export interface IsNull {
   type: 'isNull'
   operand: Expr
@@ -147,7 +164,7 @@ export interface Exists {
   where: Pred
 }
 
-export type Pred = Compare | In | IsNull | IsNotNull | And | Or | Not | Exists
+export type Pred = Compare | In | Contains | IsNull | IsNotNull | And | Or | Not | Exists
 
 // ---------------------------------------------------------------------------
 // 参照フィールドの抽出（表示用）
@@ -216,6 +233,7 @@ export function referencedFields(pred: Pred): FieldRef[] {
       case 'in':
         walkExpr(node.left, scope)
         return
+      case 'contains':
       case 'isNull':
       case 'isNotNull':
         walkExpr(node.operand, scope)
@@ -298,6 +316,11 @@ export const inSchema: z.ZodType<In> = z.lazy(() =>
   }),
 )
 
+export const containsSchema: z.ZodType<Contains> = z.lazy(() =>
+  // 空文字は「全件一致」になり条件として意味が無いので構文層で弾く
+  z.object({ type: z.literal('contains'), operand: exprSchema, value: z.string().min(1) }),
+)
+
 export const isNullSchema: z.ZodType<IsNull> = z.lazy(() =>
   z.object({ type: z.literal('isNull'), operand: exprSchema }),
 )
@@ -331,6 +354,7 @@ export const predSchema: z.ZodType<Pred> = z.lazy(() =>
   z.union([
     compareSchema,
     inSchema,
+    containsSchema,
     isNullSchema,
     isNotNullSchema,
     andSchema,

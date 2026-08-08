@@ -9,8 +9,9 @@
  * いまナビに項目が1つしか無いのは、フローが1本しか定義されていないからにすぎない。
  */
 import { flows, sales } from '@alt/definitions'
+import { parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, type Client } from './api'
+import { ApiError, MASTER_LIMIT, type Client } from './api'
 import { asOfParam } from './format'
 // 型だけの import なので実行時のコードは含まれない（決定F の「本番ビルドに含めない」は保たれる）。
 import type { DevUser } from './auth/dev-user'
@@ -52,7 +53,10 @@ export interface AppProps {
 export function App({ client, devUsers }: AppProps) {
   const route = useRoute()
   const [user, setUser] = useState(devUsers.current)
-  const [asOf, setAsOf] = useState('')
+  // 時点も URL に載せる（フェーズ6、論点D 補）。「先月末時点のこの絞り込み」ごと共有できる
+  const [asOfParamValue, setAsOfParam] = useQueryState('as_of', parseAsString.withDefault(''))
+  const asOf = asOfParamValue
+  const setAsOf = (value: string) => void setAsOfParam(value === '' ? null : value)
   const [error, setError] = useState<unknown>(null)
   const [masters, setMasters] = useState<Masters>(emptyMasters)
 
@@ -69,7 +73,10 @@ export function App({ client, devUsers }: AppProps) {
   useEffect(() => {
     let live = true
     setError(null)
-    Promise.all([client.list<Company>('company'), client.list<Employee>('employee')])
+    Promise.all([
+      client.list<Company>('company', { limit: MASTER_LIMIT }),
+      client.list<Employee>('employee', { limit: MASTER_LIMIT }),
+    ])
       .then(([companies, employees]) => {
         if (!live) return
         setMasters({ companies: byId(companies), employees: byId(employees) })
@@ -150,7 +157,7 @@ export function App({ client, devUsers }: AppProps) {
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
-      <main className="app-main">
+      <main className={`app-main${route.name === 'deals' ? ' wide' : ''}`}>
         {route.name === 'deals' ? (
           <DealList {...screen} />
         ) : route.name === 'deal' ? (

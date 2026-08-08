@@ -7,7 +7,8 @@
  */
 import { badRequest, conflict, notFound } from './api.js'
 import { isAdmin, permissionsOf, rowFilterOf } from './authz.js'
-import type { Deps, RequestContext } from './context.js'
+import { isHistorical, type Deps, type RequestContext } from './context.js'
+import type { ListSelection } from './list-query.js'
 import {
   autoCheckSlots,
   exitViews,
@@ -21,10 +22,14 @@ import { validateInput } from './record-input.js'
 import { toColumnName, type StepDef, type TableDef } from '@alt/dsl'
 import {
   closeCurrentRow,
+  countRecords,
   decodeValue,
+  DEFAULT_LIMIT,
   insertRecord,
   insertFlowState,
+  MAX_LIMIT,
   selectManualChecks,
+  selectRecordIds,
   selectRecords,
   STEP_COLUMN,
   STEP_SINCE_COLUMN,
@@ -32,6 +37,7 @@ import {
   UNMET_COLUMN,
   type ContextValues,
   type SelectExpression,
+  type SelectRecordsOptions,
   type SqlFragment,
 } from '@alt/sql'
 import { randomUUID } from 'node:crypto'
@@ -45,7 +51,90 @@ type Row = Record<string, unknown>
 // 読み
 // ---------------------------------------------------------------------------
 
-export function listRecords(deps: Deps, ctx: RequestContext, id?: string): RecordView[] {
+/** 一覧の1ページ。総件数と窓の位置は、仮想スクロールが両方無いと成立しない。 */
+export interface RecordPage {
+  records: RecordView[]
+  /** 絞り込みに一致する総件数（窓の外も含む）。 */
+  total: number
+  offset: number
+  limit: number
+}
+
+/**
+ * 一覧の1ページ（docs/impl/phase-6-list-grid.md 論点B）。
+ *
+ * **2段階で取る**（決定E。実測して切り替えた）: 窓の id を決める → その id で本体を引く。
+ * 出口条件の相関サブクエリを載せたまま `ORDER BY` + `LIMIT` すると、SQLite が窓の外の
+ * 行まで評価してしまう（`selectRecordIds` のコメント）。
+ *
+ * クエリは**件数によらず4本**（総件数 / id / 本体 / 手動チェック）。フェーズ3で作った
+ * 「一覧のクエリ本数はレコード数に依存しない」性質は、窓取得にしても保たれる。
+ */
+export function listRecords(
+  deps: Deps,
+  ctx: RequestContext,
+  selection: ListSelection = {},
+): RecordPage {
+  const isTarget = ctx.flow.target === ctx.table.name
+  const filter = {
+    registry: deps.registry.tables,
+    table: ctx.table,
+    ...(isTarget ? { flow: ctx.flow.key } : {}),
+    values: contextValues(ctx),
+    ...(ctx.readAt === undefined ? {} : { asOf: ctx.readAt }),
+    ...(selection.where === undefined ? {} : { where: selection.where }),
+    ...(selection.steps === undefined ? {} : { steps: selection.steps }),
+  }
+  const ordering =
+    selection.sort === undefined
+      ? {}
+      : { sort: selection.sort, stepOrder: ctx.flow.steps.map((step) => step.key) }
+
+  const [count] = all(deps, countRecords(filter))
+  const limit = Math.min(ctx.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
+  const offset = ctx.offset ?? 0
+
+  const ids = all(deps, selectRecordIds({ ...filter, ...ordering, limit, offset })).map((row) =>
+    String(row['id']),
+  )
+
+  return {
+    // 2段目にも同じ ORDER BY を渡す。IN では順序が保証されない
+    records: queryRecords(deps, ctx, { ...filter, ...ordering, ids }),
+    total: Number(count?.['total'] ?? 0),
+    offset,
+    limit,
+  }
+}
+
+export function getRecord(deps: Deps, ctx: RequestContext, id: string): RecordView {
+  const isTarget = ctx.flow.target === ctx.table.name
+  const [record] = queryRecords(deps, ctx, {
+    registry: deps.registry.tables,
+    table: ctx.table,
+    ...(isTarget ? { flow: ctx.flow.key } : {}),
+    values: contextValues(ctx),
+    ...(ctx.readAt === undefined ? {} : { asOf: ctx.readAt }),
+    id,
+  })
+  if (record === undefined) {
+    throw notFound(
+      `${ctx.table.name} の "${id}" が見つからない`,
+      ctx.readAt === undefined ? undefined : `${ctx.readAt} 時点には存在しなかった可能性がある`,
+    )
+  }
+  return record
+}
+
+/**
+ * SELECT して `RecordView` に変換するところまで。出口条件と rowFilter を
+ * **SELECT 句に埋めて一括評価する**（docs/condition-ast.md §5-1）。
+ */
+function queryRecords(
+  deps: Deps,
+  ctx: RequestContext,
+  options: Omit<SelectRecordsOptions, 'expressions'>,
+): RecordView[] {
   const isTarget = ctx.flow.target === ctx.table.name
   const slots = isTarget ? autoCheckSlots(ctx.flow) : []
   const rowFilter = rowFilterOf(ctx.principal, ctx.usage)
@@ -55,33 +144,9 @@ export function listRecords(deps: Deps, ctx: RequestContext, id?: string): Recor
     expressions.push({ alias: ROW_WRITABLE_COLUMN, pred: rowFilter })
   }
 
-  const rows = all(
-    deps,
-    selectRecords({
-      registry: deps.registry.tables,
-      table: ctx.table,
-      ...(isTarget ? { flow: ctx.flow.key } : {}),
-      expressions,
-      values: contextValues(ctx),
-      ...(ctx.asOf === undefined ? {} : { asOf: ctx.asOf }),
-      ...(id === undefined ? {} : { id }),
-      ...(ctx.limit === undefined ? {} : { limit: ctx.limit }),
-    }),
-  )
-
+  const rows = all(deps, selectRecords({ ...options, expressions }))
   const manual = isTarget ? loadManualChecks(deps, ctx, rows) : new Map()
   return rows.map((row) => toView(ctx, row, slots, manual, rowFilter !== undefined))
-}
-
-export function getRecord(deps: Deps, ctx: RequestContext, id: string): RecordView {
-  const [record] = listRecords(deps, ctx, id)
-  if (record === undefined) {
-    throw notFound(
-      `${ctx.table.name} の "${id}" が見つからない`,
-      ctx.asOf === undefined ? undefined : `${ctx.asOf} 時点には存在しなかった可能性がある`,
-    )
-  }
-  return record
 }
 
 /**
@@ -146,7 +211,8 @@ function toView(
     usage: ctx.usage,
     // rowFilter が無いバインディング（マスタ類）は行レベルの制限なし
     rowWritable: !hasRowFilter || isAdmin(ctx.principal) || row[ROW_WRITABLE_COLUMN] === 1,
-    historical: ctx.asOf !== undefined,
+    // **`snapshot` では立たない**（決定A）。窓取得で時点を固定しても編集可否は落ちない
+    historical: isHistorical(ctx),
     step,
   })
   return view

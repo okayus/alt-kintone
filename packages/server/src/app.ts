@@ -11,8 +11,9 @@
  */
 import { ApiError, badRequest, notFound, type ApiRequest, type ApiResponse } from './api.js'
 import { requireTableWrite } from './authz.js'
-import { resolveContext, type Deps, type RequestContext } from './context.js'
+import { isHistorical, resolveContext, type Deps, type RequestContext } from './context.js'
 import { advance, currentStepKey, setManualCheck } from './flow-state.js'
+import { parseListSelection } from './list-query.js'
 import { createRecord, getRecord, listRecords, updateRecord } from './records.js'
 import type { DefinitionRegistry } from './registry.js'
 
@@ -54,11 +55,24 @@ function route(deps: Deps, request: ApiRequest): ApiResponse {
   // /api/{table}
   if (id === undefined) {
     if (request.method === 'GET') {
+      const selection = parseListSelection(request.query, {
+        table: ctx.table,
+        flow: ctx.flow,
+        isTarget: ctx.flow.target === ctx.table.name,
+      })
+      const page = listRecords(deps, ctx, selection)
       return ok({
         table: ctx.table.name,
         flow: ctx.flow.key,
         asOf: ctx.asOf ?? null,
-        records: listRecords(deps, ctx),
+        snapshot: ctx.snapshot ?? null,
+        // **FE はこれを以後の窓取得の snapshot に使う**（クライアント時計を信用しない）。
+        // 世代の起点になるので、1枚目のレスポンスにだけあれば足りるものではない
+        now: ctx.now,
+        total: page.total,
+        offset: page.offset,
+        limit: page.limit,
+        records: page.records,
       })
     }
     if (request.method === 'POST') {
@@ -137,7 +151,7 @@ function requireRowWritable(deps: Deps, ctx: RequestContext, id: string): void {
   const record = getRecord(deps, ctx, id)
   const permissions = (record['_permissions'] ?? {}) as Record<string, boolean>
   if (permissions['update'] === true) return
-  if (ctx.asOf !== undefined) {
+  if (isHistorical(ctx)) {
     throw badRequest('as_of を付けた読み取り専用のリクエストでは更新できない')
   }
   throw new ApiError(

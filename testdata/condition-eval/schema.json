@@ -34,6 +34,7 @@
     "fields": {
       "id": { "type": "uuid", "label": "ID", "required": true, "primaryKey": true },
       "companyId": { "type": "uuid", "label": "顧客企業", "required": true, "primaryKey": false, "references": "company" },
+      "title": { "type": "text", "label": "案件名", "required": false, "primaryKey": false },
       "initialBilling": { "type": "integer", "label": "一時金・請求額", "required": false, "primaryKey": false },
       "monthlyBilling": { "type": "integer", "label": "月額・請求額", "required": false, "primaryKey": false },
       "expectedCloseMonth": { "type": "yearMonth", "label": "見込み受注月", "required": false, "primaryKey": false },

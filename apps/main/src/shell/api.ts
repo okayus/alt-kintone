@@ -31,15 +31,47 @@ export class ApiError extends Error {
 
 export type AuthHeaders = () => Record<string, string>
 
+/**
+ * マスタ（会社・従業員）を全件引くときの件数。**サーバの `MAX_LIMIT` と同じ値**。
+ *
+ * 名前解決を全件取得に乗せているので、マスタがこれを超えると**黙って名前が「—」になる**
+ * （docs/impl/phase-6-list-grid.md 決定F）。超える規模になったら、名前解決の方式ごと
+ * 考え直すことになる（v1 では作らない）。
+ */
+export const MASTER_LIMIT = 500
+
 export interface QueryOptions {
-  /** 時点指定。省略時は現在。 */
+  /** 時点指定。省略時は現在。**過去を見る＝読み取り専用**になる。 */
   asOf?: string | undefined
+  /**
+   * 窓取得の時点固定（docs/impl/phase-6-list-grid.md 決定A）。
+   *
+   * `asOf` と違って読み取り専用にはならない。**サーバが返した `now` をそのまま渡す**
+   * （クライアント時計を信用しない）。世代の途中で何が更新されても窓の中身が動かない。
+   */
+  snapshot?: string | undefined
+  limit?: number | undefined
+  offset?: number | undefined
+  /** `<フィールド>:asc|desc` か `_step:asc`。 */
+  sort?: string | undefined
+  /**
+   * 絞り込み。**キーはそのまま API のパラメータ名**（`status` / `title_like` / `step` …）。
+   * FE で AST を組み立てないのは、条件式の解釈をサーバ1箇所に閉じるため（論点C）。
+   */
+  filters?: Readonly<Record<string, string>> | undefined
 }
 
 /** クエリ文字列を組み立てる。テストが直接呼ぶ。 */
 export function buildQuery(flow: string, opts: QueryOptions = {}): string {
   const params = new URLSearchParams({ flow })
   if (opts.asOf !== undefined && opts.asOf !== '') params.set('as_of', opts.asOf)
+  if (opts.snapshot !== undefined && opts.snapshot !== '') params.set('snapshot', opts.snapshot)
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit))
+  if (opts.offset !== undefined && opts.offset > 0) params.set('offset', String(opts.offset))
+  if (opts.sort !== undefined && opts.sort !== '') params.set('sort', opts.sort)
+  for (const [key, value] of Object.entries(opts.filters ?? {})) {
+    if (value !== '') params.set(key, value)
+  }
   return `?${params.toString()}`
 }
 
@@ -47,6 +79,14 @@ export interface ListResponse<T> {
   table: string
   flow: string
   asOf: string | null
+  /** 実際に固定して読んだ時点。渡さなければ null。 */
+  snapshot: string | null
+  /** サーバ時刻。**次の窓の `snapshot` はこれを使う**。 */
+  now: string
+  /** 絞り込みに一致する総件数（窓の外も含む）。 */
+  total: number
+  offset: number
+  limit: number
   records: T[]
 }
 
@@ -58,6 +98,8 @@ export interface AdvanceResponse<T> {
 
 export interface Client {
   list<T>(table: string, opts?: QueryOptions): Promise<T[]>
+  /** 一覧を窓で引く。総件数と時点が要るので、レスポンスをそのまま返す。 */
+  listPage<T>(table: string, opts?: QueryOptions): Promise<ListResponse<T>>
   get<T>(table: string, id: string, opts?: QueryOptions): Promise<T>
   patch<T>(table: string, id: string, body: unknown): Promise<T>
   advance<T>(table: string, id: string, to: string): Promise<AdvanceResponse<T>>
@@ -90,6 +132,9 @@ export function createClient(auth: AuthHeaders, flow = 'sales'): Client {
   return {
     async list<T>(table: string, opts?: QueryOptions): Promise<T[]> {
       return (await request<ListResponse<T>>('GET', table, opts)).records
+    },
+    listPage<T>(table: string, opts?: QueryOptions): Promise<ListResponse<T>> {
+      return request<ListResponse<T>>('GET', table, opts)
     },
     async get<T>(table: string, id: string, opts?: QueryOptions): Promise<T> {
       return (await request<{ record: T }>('GET', `${table}/${id}`, opts)).record

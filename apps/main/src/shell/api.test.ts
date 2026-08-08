@@ -22,6 +22,31 @@ describe('buildQuery', () => {
     expect(buildQuery('sales', { asOf: '' })).toBe('?flow=sales')
     expect(buildQuery('sales', { asOf: undefined })).toBe('?flow=sales')
   })
+
+  // フェーズ6（窓取得）。docs/impl/phase-6-list-grid.md §7-1
+  it('窓の指定を付ける。offset が 0 のときは省く', () => {
+    expect(buildQuery('sales', { limit: 100, offset: 0 })).toBe('?flow=sales&limit=100')
+    expect(buildQuery('sales', { limit: 100, offset: 300 })).toBe(
+      '?flow=sales&limit=100&offset=300',
+    )
+  })
+
+  it('snapshot は as_of とは別のパラメータ（決定A）', () => {
+    expect(buildQuery('sales', { snapshot: '2026-08-08T00:00:00.000Z' })).toBe(
+      '?flow=sales&snapshot=2026-08-08T00%3A00%3A00.000Z',
+    )
+  })
+
+  it('フィルタはキーをそのままクエリに載せる（FE で AST を組まない）', () => {
+    expect(
+      buildQuery('sales', {
+        sort: 'expectedCloseMonth:desc',
+        filters: { step: 'proposed,qualified', title_like: '看板', confidence: '' },
+      }),
+    ).toBe(
+      '?flow=sales&sort=expectedCloseMonth%3Adesc&step=proposed%2Cqualified&title_like=%E7%9C%8B%E6%9D%BF',
+    )
+  })
 })
 
 describe('toApiError', () => {

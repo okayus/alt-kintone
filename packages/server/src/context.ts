@@ -18,11 +18,30 @@ export interface RequestContext {
   table: TableDef
   flow: FlowDef
   usage: TableUsage
-  /** 時点指定。省略時は現在。 */
+  /**
+   * ユーザーの時点指定（`as_of`）。**過去を見ている ＝ 読み取り専用**。
+   * これが立っていると `_permissions.update` が false になり、書き込みも弾かれる。
+   */
   asOf: string | undefined
+  /**
+   * 窓取得の時点固定（`snapshot`。docs/impl/phase-6-list-grid.md 決定A）。
+   *
+   * SQL 上は `as_of` と同じ時点条件に落ちるが**意味が違う** — こちらは「いまを固定して
+   * 読んでいる」であって過去ではないので、読み取り専用にしない。分けないと、行ズレ対策で
+   * 時点を固定した瞬間に一覧の全行が編集不可になる。
+   */
+  snapshot: string | undefined
+  /** SQL に渡す実際の読み取り時点。`asOf ?? snapshot`。省略時は現在。 */
+  readAt: string | undefined
   limit: number | undefined
+  offset: number | undefined
   /** この書き込みの時刻。**1リクエスト内で使い回す**（有効期間に穴も重なりも作らないため）。 */
   now: string
+}
+
+/** 過去を見ているか（＝読み取り専用か）。`snapshot` では立たない。 */
+export function isHistorical(ctx: RequestContext): boolean {
+  return ctx.asOf !== undefined
 }
 
 export interface Deps {
@@ -53,15 +72,40 @@ export function resolveContext(deps: Deps, request: ApiRequest, tableName: strin
   const principal = authenticate(deps.db, request.headers, deps.authenticator)
   requireParticipation(principal, usage.flow)
 
+  const asOf = parseAsOf(request.query['as_of'], 'as_of')
+  const snapshot = parseSnapshot(request)
+
   return {
     principal,
     table,
     flow: usage.flow,
     usage,
-    asOf: parseAsOf(request.query['as_of']),
+    asOf,
+    snapshot,
+    // 両方あれば as_of が勝つ。過去のデータは動かないので固定する必要が無い
+    readAt: asOf ?? snapshot,
     limit: parseLimit(request.query['limit']),
+    offset: parseOffset(request.query['offset']),
     now: (deps.clock ?? (() => new Date().toISOString()))(),
   }
+}
+
+/**
+ * 窓取得の時点固定は**読み取り専用**。書き込みに付いていたら弾く。
+ *
+ * 黙って無視すると「固定した時点に書いたつもり」の呼び出しが通ってしまう。
+ * 有効期間型の書き込みは常に現在に対して行われる（`insertRecord` の `now`）ので、
+ * 固定時点を書き込みに持ち込む意味は無い。
+ */
+function parseSnapshot(request: ApiRequest): string | undefined {
+  const snapshot = parseAsOf(request.query['snapshot'], 'snapshot')
+  if (snapshot !== undefined && request.method !== 'GET') {
+    throw badRequest(
+      `snapshot は読み取り（GET）専用`,
+      '書き込みは常に現在に対して行われる。一覧の窓取得で行ズレを防ぐためのパラメータ',
+    )
+  }
+  return snapshot
 }
 
 /**
@@ -88,11 +132,11 @@ function resolveUsage(usages: readonly TableUsage[], flowKey: string | undefined
 }
 
 /** ISO 8601 の文字列だけ受ける。列の値が ISO 文字列なので、比較は文字列比較で成立する。 */
-function parseAsOf(raw: string | undefined): string | undefined {
+function parseAsOf(raw: string | undefined, name: string): string | undefined {
   if (raw === undefined || raw === '') return undefined
   if (Number.isNaN(Date.parse(raw))) {
     throw badRequest(
-      `as_of が日時として読めない: ${raw}`,
+      `${name} が日時として読めない: ${raw}`,
       'ISO 8601 で渡す（例: 2026-07-31T23:59:59.999Z）',
     )
   }
@@ -106,5 +150,17 @@ function parseLimit(raw: string | undefined): number | undefined {
     throw badRequest(`limit が正の整数ではない: ${raw}`)
   }
   if (value > MAX_LIMIT) throw badRequest(`limit の上限は ${MAX_LIMIT}`)
+  return value
+}
+
+function parseOffset(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === '') return undefined
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0) {
+    throw badRequest(
+      `offset が 0 以上の整数ではない: ${raw}`,
+      '窓取得は offset + limit で切る。総件数はレスポンスの total にある',
+    )
+  }
   return value
 }

@@ -69,6 +69,27 @@ const COMPARE_SQL: Record<string, string> = {
   lte: '<=',
 }
 
+/**
+ * `contains` の LIKE パターンで使うエスケープ文字。
+ *
+ * バックスラッシュにしないのは、SQLite が文字列リテラル中の `\` を特別扱いしない一方で
+ * PostgreSQL は `standard_conforming_strings` の設定で解釈が変わるため。
+ * `!` なら SQL リテラルとしても LIKE パターンとしても素の1文字で、方言差が出ない。
+ */
+const LIKE_ESCAPE = '!'
+
+/**
+ * 探す文字列 → LIKE パターン。`contains` は部分一致であってパターンではないので
+ * （docs/impl/phase-6-list-grid.md 決定B）、ワイルドカードは**ここで殺す**。
+ */
+function likePattern(value: string): string {
+  const escaped = value.replace(
+    new RegExp(`[${LIKE_ESCAPE}%_]`, 'g'),
+    (ch) => `${LIKE_ESCAPE}${ch}`,
+  )
+  return `%${escaped}%`
+}
+
 const AGGREGATE_SQL: Record<string, string> = {
   count: 'COUNT',
   sum: 'SUM',
@@ -225,6 +246,10 @@ function pred_(node: Pred, b: Builder, scope: Scope, rootAlias: string): string 
       const values = node.values.map((v) => param(b, v)).join(', ')
       return `${expr_(node.left, b, scope, rootAlias)} IN (${values})`
     }
+    case 'contains':
+      // パターンは**パラメータとして**渡す（SQL の中で `'%' || ? || '%'` と組まない）。
+      // 連結演算子の方言差が消え、エスケープの責任が1箇所に閉じる
+      return `${expr_(node.operand, b, scope, rootAlias)} LIKE ${param(b, likePattern(node.value))} ESCAPE '${LIKE_ESCAPE}'`
     case 'isNull':
       return `${expr_(node.operand, b, scope, rootAlias)} IS NULL`
     case 'isNotNull':

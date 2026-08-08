@@ -39,8 +39,9 @@ const USAGE = `alt — alt-kintone の定義を検証し、適用する
       定義バンドルを JSON で吐く（バックエンドへの受け渡し形）
       --out を付けるとファイルに書く。バックエンドはこれを起動時に読む
 
-  alt seed [--db <path>] [--reset] [--json]
+  alt seed [--db <path>] [--reset] [--deals <N>] [--json]
       開発用のデモデータを入れる。--reset で既存データを消してから入れる
+      --deals <N> で N 件のダミー案件を追加する（一覧の性能検証用。乱数は固定シード）
       ※ マスタ（company / contact / employee）は API から作れないための裏口
 
 終了コード: 0 成功 / 1 検証エラー・適用失敗 / 2 使い方の誤り`
@@ -148,8 +149,10 @@ function runSeed(args: readonly string[], io: Io): number {
     json: { type: 'boolean' },
     db: { type: 'string' },
     reset: { type: 'boolean' },
+    deals: { type: 'string' },
   })
 
+  const deals = parseCount(opts['deals'], 'deals')
   const bundle = loadBundle()
   const path = resolveDbPath(
     typeof opts['db'] === 'string' ? opts['db'] : undefined,
@@ -157,7 +160,10 @@ function runSeed(args: readonly string[], io: Io): number {
   )
   const db = openDatabase(path)
   try {
-    const result = seed(db, bundle, { reset: opts['reset'] === true })
+    const result = seed(db, bundle, {
+      reset: opts['reset'] === true,
+      ...(deals === undefined ? {} : { deals }),
+    })
     if (opts['json'] === true) {
       io.out(JSON.stringify({ ok: true, db: path, ...result }, null, 2))
     } else {
@@ -174,6 +180,16 @@ function runSeed(args: readonly string[], io: Io): number {
 }
 
 // ---------------------------------------------------------------------------
+
+/** `parseArgs` は数値型を持たないので、正の整数として読み直す。 */
+function parseCount(raw: unknown, name: string): number | undefined {
+  if (typeof raw !== 'string' || raw === '') return undefined
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new UsageError(`--${name} は正の整数で渡す: ${raw}`)
+  }
+  return value
+}
 
 type Options = NonNullable<ParseArgsConfig['options']>
 

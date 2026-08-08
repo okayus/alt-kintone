@@ -8,6 +8,7 @@
  */
 import {
   closeCurrentRow,
+  countRecords,
   decodeValue,
   encodeValue,
   insertFlowState,
@@ -15,6 +16,7 @@ import {
   selectFlowState,
   selectManualChecks,
   selectRecords,
+  STEP_COLUMN,
   upsertManualCheck,
 } from './query.js'
 import { schemaStatements } from './ddl.js'
@@ -171,6 +173,190 @@ describe('SELECT 句に埋める述語', () => {
   it('上限を超える limit は丸める', () => {
     const { params } = selectRecords({ registry: bundle.tables, table: item, values, limit: 9999 })
     expect(params.at(-1)).toBe(500)
+  })
+})
+
+/**
+ * 一覧のグリッド化（docs/impl/phase-6-list-grid.md）。窓取得・総件数・並び・フィルタ。
+ *
+ * ここで確かめたい性質は1つに集約できる: **同じ絞り込みなら、窓をどう切っても
+ * 全行がちょうど一度ずつ出る**。これが崩れるとスクロールで行が飛んだり重複したりする。
+ */
+describe('窓取得・並び・フィルタ', () => {
+  const FLOW = 'sales'
+  const STEPS = ['contacted', 'qualified', 'proposed', 'won'] as const
+
+  /** id と price を持つ品目を n 件。price は意図的に NULL を混ぜる。 */
+  function seeded(n: number): Database.Database {
+    const database = db()
+    for (let i = 0; i < n; i++) {
+      write(
+        database,
+        {
+          id: `i${String(i).padStart(3, '0')}`,
+          name: `品目${i}`,
+          price: i % 5 === 0 ? null : 1000 - i,
+        },
+        T1,
+      )
+    }
+    return database
+  }
+
+  const page = (
+    database: Database.Database,
+    opts: Partial<Parameters<typeof selectRecords>[0]>,
+  ) => {
+    const { sql, params } = selectRecords({ registry: bundle.tables, table: item, values, ...opts })
+    return (database.prepare(sql).all(...params) as Array<Record<string, unknown>>).map((r) =>
+      String(r['id']),
+    )
+  }
+
+  it('offset で切った窓を繋ぐと、全行がちょうど一度ずつ出る', () => {
+    const database = seeded(25)
+    const collected = [
+      ...page(database, { limit: 10, offset: 0 }),
+      ...page(database, { limit: 10, offset: 10 }),
+      ...page(database, { limit: 10, offset: 20 }),
+    ]
+    expect(collected).toHaveLength(25)
+    expect(new Set(collected).size).toBe(25)
+  })
+
+  it('valid_from が同値でも id のタイブレークで順序が決まる（窓の決定性）', () => {
+    // seeded() は全件 T1 なので、id が無ければ並びは不定になる
+    const database = seeded(5)
+    expect(page(database, {})).toEqual(['i000', 'i001', 'i002', 'i003', 'i004'])
+  })
+
+  it('countRecords は一覧と同じ絞り込みで数える', () => {
+    const database = seeded(25)
+    // price = 1000 - i なので i < 15。うち price が NULL の i000/005/010 は
+    // 比較が NULL になって入らない → 12 件
+    const where: Pred = {
+      type: 'compare',
+      op: 'gt',
+      left: { type: 'field', source: 'root', path: ['price'] },
+      right: { type: 'literal', value: 985 },
+    }
+    const { sql, params } = countRecords({ registry: bundle.tables, table: item, values, where })
+    const [row] = database.prepare(sql).all(...params) as Array<{ total: number }>
+    expect(row?.total).toBe(12)
+    // 窓を全部繋いだ件数と一致すること（総件数と行数が食い違うとスクロールが破綻する）
+    expect(page(database, { where, limit: 500 })).toHaveLength(12)
+  })
+
+  it('NULL は昇順でも降順でも末尾に来る（決定D）', () => {
+    const database = seeded(6) // i000 と i005 が NULL
+    const asc = page(database, { sort: { key: 'price', direction: 'asc' } })
+    const desc = page(database, { sort: { key: 'price', direction: 'desc' } })
+    expect(asc.slice(-2)).toEqual(['i000', 'i005'])
+    expect(desc.slice(-2)).toEqual(['i000', 'i005'])
+    // 値のある行は向きどおり（price = 1000 - i なので id 昇順は price 降順）
+    expect(asc.slice(0, 4)).toEqual(['i004', 'i003', 'i002', 'i001'])
+    expect(desc.slice(0, 4)).toEqual(['i001', 'i002', 'i003', 'i004'])
+  })
+
+  it('contains でフィルタできる（AST がそのまま WHERE に落ちる）', () => {
+    const database = db()
+    write(database, { id: 'i1', name: '山田食堂 看板' }, T1)
+    write(database, { id: 'i2', name: '看板リニューアル' }, T1)
+    write(database, { id: 'i3', name: 'ホールスタッフ求人' }, T1)
+    expect(
+      page(database, {
+        where: {
+          type: 'contains',
+          operand: { type: 'field', source: 'root', path: ['name'] },
+          value: '看板',
+        },
+      }),
+    ).toEqual(['i1', 'i2'])
+  })
+
+  describe('現在ステップ', () => {
+    function withSteps(): Database.Database {
+      const database = db()
+      // 宣言順（contacted → qualified → proposed → won）とは違う順で入れる
+      const assigned = { i1: 'won', i2: 'contacted', i3: 'proposed', i4: 'qualified' }
+      for (const [id, step] of Object.entries(assigned)) {
+        write(database, { id, name: id }, T1)
+        const { sql, params } = insertFlowState({
+          table: 'item',
+          recordId: id,
+          flow: FLOW,
+          step,
+          unmetChecks: null,
+          now: T1,
+          context: { changedBy: 'u1', changedFlow: FLOW, changedStep: null },
+        })
+        database.prepare(sql).run(...params)
+      }
+      // フローに乗っていないレコード
+      write(database, { id: 'i5', name: 'i5' }, T1)
+      return database
+    }
+
+    it('step で絞れる', () => {
+      expect(page(withSteps(), { flow: FLOW, steps: ['contacted', 'proposed'] })).toEqual([
+        'i2',
+        'i3',
+      ])
+    })
+
+    it('定義の宣言順で並ぶ。フロー外は末尾', () => {
+      expect(
+        page(withSteps(), {
+          flow: FLOW,
+          sort: { key: STEP_COLUMN, direction: 'asc' },
+          stepOrder: STEPS,
+        }),
+      ).toEqual(['i2', 'i4', 'i3', 'i1', 'i5'])
+    })
+
+    it('flow なしで _step ソートは組み立てられない', () => {
+      expect(() =>
+        selectRecords({
+          registry: bundle.tables,
+          table: item,
+          values,
+          sort: { key: STEP_COLUMN, direction: 'asc' },
+        }),
+      ).toThrow()
+    })
+  })
+
+  it('パラメータは SQL に現れる順に積まれる（窓取得の全部入り）', () => {
+    const { sql, params } = selectRecords({
+      registry: bundle.tables,
+      table: item,
+      flow: FLOW,
+      values,
+      expressions: [
+        {
+          alias: '_c0',
+          pred: {
+            type: 'compare',
+            op: 'gt',
+            left: { type: 'field', source: 'root', path: ['price'] },
+            right: { type: 'literal', value: 150 },
+          },
+        },
+      ],
+      steps: ['contacted'],
+      where: {
+        type: 'contains',
+        operand: { type: 'field', source: 'root', path: ['name'] },
+        value: '看板',
+      },
+      sort: { key: STEP_COLUMN, direction: 'asc' },
+      stepOrder: STEPS,
+      limit: 10,
+      offset: 20,
+    })
+    // 述語(150) → JOIN(テーブル名, フロー) → WHERE(steps, contains) → ORDER BY(CASE×4) → LIMIT, OFFSET
+    expect(params).toEqual([150, 'item', FLOW, 'contacted', '%看板%', ...STEPS, 10, 20])
+    expect(sql).toContain('LIMIT ? OFFSET ?')
   })
 })
 

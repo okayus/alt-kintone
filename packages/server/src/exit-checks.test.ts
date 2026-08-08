@@ -116,9 +116,10 @@ describe('一括評価', () => {
 
     prepared = 0
     expect(records(f.request('GET', '/api/deal?flow=sales')).length).toBe(8)
-    // 認証1本 + レコード（現在ステップ + 全自動判定を含む）1本 + 手動チェック1本
+    // 認証1本 + 総件数1本 + 窓の id 1本 + レコード（現在ステップ + 全自動判定を含む）1本
+    // + 手動チェック1本。フェーズ6（窓取得）で2本増えたが、どれも件数に依存しない
     expect(prepared).toBe(forThree)
-    expect(prepared).toBe(3)
+    expect(prepared).toBe(5)
   })
 
   it('決着ステップには出口条件が無い（出る先が無いので出る条件も無い）', () => {

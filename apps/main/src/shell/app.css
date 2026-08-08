@@ -138,6 +138,11 @@ textarea {
   max-width: 1100px;
 }
 
+/* 一覧グリッドは画面幅を使い切る（読み物の詳細画面と違って列が10ある） */
+.app-main.wide {
+  max-width: none;
+}
+
 .app-banner {
   display: flex;
   gap: 12px;
@@ -234,6 +239,190 @@ th {
 
 tbody tr:last-child td {
   border-bottom: none;
+}
+
+/* --- 案件一覧（グリッド。docs/impl/phase-6-list-grid.md） ---------------- */
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.filters-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.filters-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filters-search {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filters-search input {
+  width: 220px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.filters-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.filters-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.filters-warn code {
+  color: var(--text);
+}
+
+.chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chip.on:hover {
+  color: #fff;
+  filter: brightness(1.1);
+}
+
+/*
+ * 仮想スクロールのため <table> ではなく grid で組む（行を絶対配置するため）。
+ * 見出しと行は同じ列テンプレート（JS 側の TEMPLATE）を共有する。
+ *
+ * 見出しは**スクロール枠の中**に sticky で置く。外に出すと、縦スクロールバーの幅だけ
+ * 列がずれ、横スクロールしたときに見出しだけ動かない。
+ */
+.grid {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.grid-head,
+.grid-row {
+  display: grid;
+  align-items: center;
+  column-gap: 0;
+  /* 列が入りきらない幅では横スクロールにする（潰して読めなくしない） */
+  min-width: 1080px;
+}
+
+.grid-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* ⚠ DealList.tsx の HEAD_HEIGHT と同じ値 */
+  height: 37px;
+  border-bottom: 1px solid var(--line);
+  background: #f0f2f5;
+  font-weight: 600;
+}
+
+.grid-scroller {
+  /* 画面の残りを使い切る。ヘッダ・ナビ・フィルタ面のぶんを引く */
+  height: calc(100vh - 320px);
+  min-height: 320px;
+  overflow: auto;
+}
+
+.grid-canvas {
+  position: relative;
+  width: 100%;
+  min-width: 1080px;
+}
+
+.grid-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  border-bottom: 1px solid var(--line);
+}
+
+.grid-row:hover {
+  background: #f8fafc;
+}
+
+.grid-cell {
+  padding: 6px 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.grid-th {
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.grid-th.sorted {
+  color: var(--accent);
+}
+
+/* 見出しのボタンは見た目を持たない（並べ替えの当たり判定だけ） */
+.grid-sort {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+
+.grid-sort:hover:not(:disabled) {
+  border: none;
+}
+
+.grid-sort-mark {
+  font-size: 10px;
+}
+
+/* 未取得の行。総件数は分かっているので高さは正しい */
+.skeleton {
+  display: block;
+  width: 70%;
+  height: 10px;
+  border-radius: 3px;
+  background: #eceff3;
 }
 
 /* --- 案件詳細 ----------------------------------------------------------- */

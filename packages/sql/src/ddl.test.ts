@@ -5,13 +5,14 @@
  * **不変条件が本当に守られること**にあるため。索引の WHERE 句を1つ落としても
  * 文字列比較のテストは気づけるが、それが実際に2重登録を弾くかは分からない。
  */
-import { boolean, table, text, uuid } from '@alt/dsl'
+import { boolean, reference, table, text, uuid } from '@alt/dsl'
 import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import {
   createTableSql,
   currentRowIndexSql,
   FLOW_STATE_TABLE,
+  foreignKeyIndexSql,
   MANUAL_CHECK_TABLE,
   platformTablesSql,
 } from './ddl.js'
@@ -154,5 +155,45 @@ describe('業務テーブル', () => {
     } finally {
       db.close()
     }
+  })
+
+  /**
+   * 決定G。出口条件の自動判定は相関サブクエリで参照先を引くので、外部キーに索引が
+   * 無いと一覧のたびに全表走査になる（実測 145ms → 9.5ms）。
+   */
+  describe('外部キーの索引', () => {
+    const activity = table(
+      'activity',
+      {
+        id: uuid('ID').primaryKey(),
+        dealId: reference('deal', '案件'),
+        contactId: reference('contact', '先方担当者'),
+        subject: text('件名').required(),
+      },
+      { label: '活動' },
+    )
+
+    it('reference のフィールドにだけ付く（定義には書かない）', () => {
+      expect(foreignKeyIndexSql(activity)).toEqual([
+        'CREATE INDEX "activity_deal_id" ON "activity" ("deal_id")',
+        'CREATE INDEX "activity_contact_id" ON "activity" ("contact_id")',
+      ])
+      // 外部キーを持たないテーブルには出ない
+      expect(foreignKeyIndexSql(deal)).toEqual([])
+    })
+
+    it('実際に索引として使われる', () => {
+      const db = new Database(':memory:')
+      try {
+        db.exec(createTableSql(activity))
+        for (const sql of foreignKeyIndexSql(activity)) db.exec(sql)
+        const plan = db
+          .prepare(`EXPLAIN QUERY PLAN SELECT 1 FROM "activity" WHERE "deal_id" = 'd1'`)
+          .all() as Array<{ detail: string }>
+        expect(plan.map((row) => row.detail).join(' ')).toContain('activity_deal_id')
+      } finally {
+        db.close()
+      }
+    })
   })
 })

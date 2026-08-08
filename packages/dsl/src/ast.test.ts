@@ -17,7 +17,8 @@ const lit = (value: string | number | boolean | null) => ({ type: 'literal', val
 
 describe('AST_VERSION', () => {
   it('契約のバージョンを持つ', () => {
-    expect(AST_VERSION).toBe(1)
+    // 2 = contains ノードの追加（docs/impl/phase-6-list-grid.md 決定B）
+    expect(AST_VERSION).toBe(2)
   })
 })
 
@@ -120,6 +121,19 @@ describe('述語', () => {
     expect(predSchema.safeParse({ type: 'isNotNull', operand: field(['closedAt']) }).success).toBe(
       true,
     )
+  })
+
+  it('contains は探す文字列を取る（空文字は全件一致なので弾く）', () => {
+    expect(
+      predSchema.safeParse({ type: 'contains', operand: field(['title']), value: '看板' }).success,
+    ).toBe(true)
+    expect(
+      predSchema.safeParse({ type: 'contains', operand: field(['title']), value: '' }).success,
+    ).toBe(false)
+    // value はパターンではなく文字列。数値を渡す余地を作らない
+    expect(
+      predSchema.safeParse({ type: 'contains', operand: field(['title']), value: 1 }).success,
+    ).toBe(false)
   })
 })
 

@@ -100,22 +100,151 @@ export interface SelectExpression {
   pred: Pred
 }
 
-export interface SelectRecordsOptions {
+export type SortDirection = 'asc' | 'desc'
+
+export interface SortSpec {
+  /** ルートテーブルのフィールド名（camelCase）か `STEP_COLUMN`。 */
+  key: string
+  direction: SortDirection
+}
+
+/** 一覧の絞り込み。`selectRecords` と `countRecords` が同じ形を取る。 */
+interface FilterOptions {
   registry: Registry
   table: TableDef
   /** ルートテーブルのエイリアス。条件式の `source: 'root'` はここを指す。 */
   alias?: string
-  /** 指定すると `_flow_state` を LEFT JOIN して現在ステップを載せる。 */
+  /** 指定すると `_flow_state` を JOIN して現在ステップを載せる。 */
   flow?: string
-  /** 出口条件・rowFilter など、行ごとに評価する述語。 */
-  expressions?: readonly SelectExpression[]
   /** 条件式のコンテキスト（`currentUser.id` など）。 */
   values: ContextValues
   asOf?: string
   /** 1件に絞る。 */
   id?: string
-  limit?: number
+  /** フィルタの述語（条件式 AST）。出口条件と同じコンパイラを通る。 */
+  where?: Pred
+  /** 現在ステップで絞る。`flow` を指定したときだけ意味を持つ。 */
+  steps?: readonly string[]
+  /**
+   * この id 集合に絞る。**2段階取得の2段目**で使う（`selectRecordIds` の結果を渡す）。
+   * 指定すると `LIMIT` / `OFFSET` は出さない（窓は1段目で確定しているため）。
+   */
+  ids?: readonly string[]
   dialect?: Dialect
+}
+
+export interface SelectRecordsOptions extends FilterOptions {
+  /** 出口条件・rowFilter など、行ごとに評価する述語。 */
+  expressions?: readonly SelectExpression[]
+  /**
+   * 並び順。省略時は更新が新しい順。**`id` は常にタイブレークとして足す**
+   * （これが無いと offset 窓の決定性が壊れ、同じ行が二度出たり消えたりする）。
+   */
+  sort?: SortSpec
+  /** `STEP_COLUMN` で並べるときの、定義の宣言順。アルファベット順は無意味なので。 */
+  stepOrder?: readonly string[]
+  limit?: number
+  offset?: number
+}
+
+export type CountRecordsOptions = FilterOptions
+
+/** `_flow_state` に付けるエイリアス。ORDER BY からも参照するので定数にする。 */
+const FLOW_ALIAS = 'fs'
+
+/**
+ * FROM と WHERE の組み立て。`selectRecords` と `countRecords` が共有する。
+ *
+ * **総件数は一覧と同じ絞り込みで数えなければならない**（違うと窓の総数と行数が食い違って
+ * スクロールが破綻する）。同じ関数を通すのが、それを構造で保証するいちばん安い方法。
+ *
+ * ⚠ SELECT 句のパラメータを積んだ**あと**に呼ぶこと（`?` は位置で対応するため）。
+ */
+function fromAndWhere(
+  a: Acc,
+  options: FilterOptions,
+  alias: string,
+): { from: string; where: string } {
+  const asOf = options.asOf
+  const from = [`FROM ${q(a, options.table.name)} ${q(a, alias)}`]
+
+  if (options.flow !== undefined) {
+    // LEFT JOIN なのは、フローに乗っていないレコードも一覧に出すため
+    from.push(
+      `LEFT JOIN ${q(a, FLOW_STATE_TABLE)} ${q(a, FLOW_ALIAS)}` +
+        ` ON ${col(a, FLOW_ALIAS, 'table_name')} = ${bind(a, options.table.name)}` +
+        ` AND ${col(a, FLOW_ALIAS, 'record_id')} = ${col(a, alias, 'id')}` +
+        ` AND ${col(a, FLOW_ALIAS, 'flow')} = ${bind(a, options.flow)}` +
+        ` AND ${temporalCondition(a, FLOW_ALIAS, asOf)}`,
+    )
+  }
+
+  const where = [temporalCondition(a, alias, asOf)]
+  if (options.id !== undefined) where.push(`${col(a, alias, 'id')} = ${bind(a, options.id)}`)
+
+  if (options.ids !== undefined) {
+    const ids = options.ids.map((value) => bind(a, value)).join(', ')
+    // 空集合は `IN ()` にできない（構文エラー）ので、明示的に偽にする
+    where.push(options.ids.length === 0 ? '1 = 0' : `${col(a, alias, 'id')} IN (${ids})`)
+  }
+
+  if (options.steps !== undefined && options.steps.length > 0) {
+    const keys = options.steps.map((step) => bind(a, step)).join(', ')
+    where.push(`${col(a, FLOW_ALIAS, 'step')} IN (${keys})`)
+  }
+
+  if (options.where !== undefined) {
+    // フィルタは出口条件と同じコンパイラを通る（フィルタの表現力 = 条件式 AST のサブセット）
+    const compiled = compilePred(options.where, {
+      registry: options.registry,
+      rootTable: options.table.name,
+      rootAlias: alias,
+      values: options.values,
+      asOf,
+      dialect: a.dialect,
+    })
+    a.params.push(...compiled.params)
+    where.push(`(${compiled.sql})`)
+  }
+
+  return { from: from.join(' '), where: where.join(' AND ') }
+}
+
+/**
+ * 並び順。**NULL は方言に関わらず末尾**に寄せる（docs/impl/phase-6-list-grid.md 決定D）。
+ *
+ * `NULLS LAST` は SQLite も PostgreSQL も対応しているが、`(式 IS NULL)` を第1キーに足せば
+ * 真偽が 0/1 に落ちるだけなので方言に分岐が要らない。見込み受注月が空の案件が先頭を占めない。
+ */
+function orderBy(a: Acc, options: SelectRecordsOptions, alias: string): string {
+  const tiebreak = `${col(a, alias, 'id')} ASC`
+  const sort = options.sort
+  if (sort === undefined) {
+    // 既定は更新が新しい順（フェーズ3からの挙動）
+    return `${col(a, alias, 'valid_from')} DESC, ${tiebreak}`
+  }
+
+  const direction = sort.direction === 'desc' ? 'DESC' : 'ASC'
+
+  if (sort.key === STEP_COLUMN) {
+    // CASE の ELSE がフロー外の行を末尾に落とすので、NULL 用の第1キーは要らない。
+    // ⚠ ここは式にパラメータが入るため、**SQL 中に一度しか書けない**
+    return `${stepOrderExpression(a, options)} ${direction}, ${tiebreak}`
+  }
+
+  const column = col(a, alias, toColumnName(sort.key))
+  return `${column} IS NULL, ${column} ${direction}, ${tiebreak}`
+}
+
+/** ステップは定義の宣言順で並べる（アルファベット順は業務的に無意味）。 */
+function stepOrderExpression(a: Acc, options: SelectRecordsOptions): string {
+  const order = options.stepOrder ?? []
+  if (options.flow === undefined || order.length === 0) {
+    throw new Error(`${STEP_COLUMN} で並べるには flow と stepOrder（定義の宣言順）の指定が要る`)
+  }
+  const whens = order.map((step, index) => `WHEN ${bind(a, step)} THEN ${index}`).join(' ')
+  // フローに乗っていないレコード（step が NULL）は ELSE に落ちて末尾に来る
+  return `CASE ${col(a, FLOW_ALIAS, 'step')} ${whens} ELSE ${order.length} END`
 }
 
 /**
@@ -150,37 +279,73 @@ export function selectRecords(options: SelectRecordsOptions): SqlFragment {
     columns.push(`(${compiled.sql}) AS ${q(a, expression.alias)}`)
   }
 
-  const from = [`FROM ${q(a, options.table.name)} ${q(a, alias)}`]
-
   if (options.flow !== undefined) {
-    const fs = 'fs'
     columns.push(
-      `${col(a, fs, 'step')} AS ${q(a, STEP_COLUMN)}`,
-      `${col(a, fs, 'valid_from')} AS ${q(a, STEP_SINCE_COLUMN)}`,
-      `${col(a, fs, 'unmet_checks')} AS ${q(a, UNMET_COLUMN)}`,
-    )
-    // LEFT JOIN なのは、フローに乗っていないレコードも一覧に出すため
-    from.push(
-      `LEFT JOIN ${q(a, FLOW_STATE_TABLE)} ${q(a, fs)}` +
-        ` ON ${col(a, fs, 'table_name')} = ${bind(a, options.table.name)}` +
-        ` AND ${col(a, fs, 'record_id')} = ${col(a, alias, 'id')}` +
-        ` AND ${col(a, fs, 'flow')} = ${bind(a, options.flow)}` +
-        ` AND ${temporalCondition(a, fs, asOf)}`,
+      `${col(a, FLOW_ALIAS, 'step')} AS ${q(a, STEP_COLUMN)}`,
+      `${col(a, FLOW_ALIAS, 'valid_from')} AS ${q(a, STEP_SINCE_COLUMN)}`,
+      `${col(a, FLOW_ALIAS, 'unmet_checks')} AS ${q(a, UNMET_COLUMN)}`,
     )
   }
 
-  const where = [temporalCondition(a, alias, asOf)]
-  if (options.id !== undefined) where.push(`${col(a, alias, 'id')} = ${bind(a, options.id)}`)
+  const { from, where } = fromAndWhere(a, options, alias)
+  const order = orderBy(a, options, alias)
 
+  return {
+    sql:
+      `SELECT ${columns.join(', ')}` +
+      ` ${from}` +
+      ` WHERE ${where}` +
+      ` ORDER BY ${order}` +
+      window(a, options),
+    params: a.params,
+  }
+}
+
+/**
+ * **窓の id だけを決めるクエリ（2段階取得の1段目）。**
+ *
+ * 出口条件の相関サブクエリを SELECT 句に持たないのが要点。SQLite は
+ * `ORDER BY` + `LIMIT` をソータ経由で処理するため、SELECT 句に式があると
+ * **窓の100行ではなく条件に合う全行ぶん**評価されうる。実測では活動15,000件・
+ * 案件10,005件で 718ms〜13.8s かかり、id だけを決めてから本体を引く形にすると
+ * 二桁ms に落ちた（docs/impl/phase-6-list-grid.md §7-4）。
+ *
+ * クエリは1本増えるが、**本数はレコード数に依存しない**というフェーズ3の性質は保たれる。
+ */
+export function selectRecordIds(options: Omit<SelectRecordsOptions, 'expressions'>): SqlFragment {
+  const a = acc(options.dialect ?? sqlite)
+  const alias = options.alias ?? 'r'
+  const { from, where } = fromAndWhere(a, options, alias)
+  return {
+    sql:
+      `SELECT ${col(a, alias, 'id')} AS ${q(a, 'id')}` +
+      ` ${from}` +
+      ` WHERE ${where}` +
+      ` ORDER BY ${orderBy(a, options, alias)}` +
+      window(a, options),
+    params: a.params,
+  }
+}
+
+/** `LIMIT` / `OFFSET`。id 集合で絞っているときは窓が確定済みなので出さない。 */
+function window(a: Acc, options: SelectRecordsOptions): string {
+  if (options.ids !== undefined) return ''
   const limit = Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
-  const sql =
-    `SELECT ${columns.join(', ')}` +
-    ` ${from.join(' ')}` +
-    ` WHERE ${where.join(' AND ')}` +
-    ` ORDER BY ${col(a, alias, 'valid_from')} DESC, ${col(a, alias, 'id')}` +
-    ` LIMIT ${bind(a, limit)}`
+  const offset = Math.max(options.offset ?? 0, 0)
+  return ` LIMIT ${bind(a, limit)}` + (offset > 0 ? ` OFFSET ${bind(a, offset)}` : '')
+}
 
-  return { sql, params: a.params }
+/**
+ * 絞り込みに一致する総件数。スクロールバーの高さと「7,000件目へ飛ぶ」に要る。
+ *
+ * 出口条件の相関サブクエリは**評価しない**（SELECT 句に無い）。数えるだけなので、
+ * 件数が増えても一覧本体より軽い。
+ */
+export function countRecords(options: CountRecordsOptions): SqlFragment {
+  const a = acc(options.dialect ?? sqlite)
+  const alias = options.alias ?? 'r'
+  const { from, where } = fromAndWhere(a, options, alias)
+  return { sql: `SELECT COUNT(*) AS ${q(a, 'total')} ${from} WHERE ${where}`, params: a.params }
 }
 
 // ---------------------------------------------------------------------------

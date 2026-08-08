@@ -64,4 +64,51 @@ describe('seed', () => {
     expect(() => seed(db, bundle)).toThrow()
     db.close()
   })
+
+  /**
+   * 一覧の窓取得・性能を検証する材料（docs/impl/phase-6-list-grid.md T1）。
+   * **固定シード**なので、同じ N なら毎回同じデータになる。
+   */
+  describe('--deals（ダミー案件の追加）', () => {
+    const generated = (deals: number) => {
+      const db = new Database(':memory:')
+      apply(db, bundle)
+      const result = seed(db, bundle, { deals })
+      return { db, result }
+    }
+
+    it('指定した件数だけ増え、_flow_state も同じ数だけ入る', () => {
+      const { db, result } = generated(120)
+      expect(result.inserted['deal']).toBe(5 + 120)
+      expect(result.inserted['_flow_state']).toBe(5 + 120)
+      db.close()
+    })
+
+    it('会社もマスタの1ページ（500件）に収まる範囲で増える（決定F）', () => {
+      const { db, result } = generated(10_000)
+      expect(result.inserted['company']).toBeLessThanOrEqual(500)
+      db.close()
+    })
+
+    it('固定シードなので二度流すと同じデータになる', () => {
+      const titles = (deals: number) => {
+        const { db } = generated(deals)
+        const rows = db
+          .prepare(`SELECT "title" FROM "deal" WHERE "id" LIKE 'd-gen-%' ORDER BY "id"`)
+          .all() as Array<{ title: string }>
+        db.close()
+        return rows.map((row) => row.title)
+      }
+      expect(titles(30)).toEqual(titles(30))
+    })
+
+    it('valid_from が散る（既定の並びが「更新が新しい順」なので、全件同値だと窓の検証にならない）', () => {
+      const { db } = generated(200)
+      const [row] = db
+        .prepare(`SELECT count(DISTINCT "valid_from") AS n FROM "deal" WHERE "id" LIKE 'd-gen-%'`)
+        .all() as Array<{ n: number }>
+      expect(row?.n).toBeGreaterThan(50)
+      db.close()
+    })
+  })
 })
