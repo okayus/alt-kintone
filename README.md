@@ -84,6 +84,21 @@ pnpm typecheck
 | `pnpm serve` | API サーバーを起動（`localhost:3100`。下記） |
 | `pnpm dev` | FE の dev サーバーを起動（`localhost:5273`。下記） |
 
+### ブラウザテスト（vitest browser mode）
+
+`apps/main` のテストは2層ある（`apps/main/vite.config.ts` の `test.projects`）:
+
+- **unit** — 純関数（node）。`src/**/*.test.ts`
+- **browser** — **実 Chromium** で回すコンポーネントテスト。`src/**/*.browser.test.tsx`。
+  グリッドのキーボード配線（フォーカスの正直さ・IME ガード）のように、
+  **DOM フォーカスの所在そのものが本体**の挙動はここに置く（node / jsdom では捕まらない）
+
+ブラウザは **イメージに apt で焼いた Chromium** を使う（`Dockerfile`）。playwright には
+ダウンロードさせない（`pnpm-workspace.yaml` の `allowBuilds: playwright: false` と
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` が対）。パスは `CHROMIUM_PATH`（既定
+`/usr/bin/chromium`）で差し替えられるので、Docker なしで走らせる場合はローカルの
+Chrome/Chromium を指すこと。API はスタブ（`Client` を注入）なのでサーバー起動は不要。
+
 ### `alt` コマンド
 
 定義を検証し、SQLite に適用する（[docs/product-concept.md §5-3](docs/product-concept.md)）。

@@ -8,6 +8,10 @@ packages:
 #   esbuild        — used internally by vite-plus/tsx/vitest
 #   better-sqlite3 — compiles its SQLite bindings (needed once `alt apply`
 #                    runs against a local SQLite file; see docs/product-concept.md §4-0)
+#   playwright     — false: its postinstall only downloads browser binaries, which
+#                    we deliberately skip — vitest browser mode drives the image's
+#                    apt-installed Chromium via executablePath (see Dockerfile)
 allowBuilds:
   esbuild: true
   better-sqlite3: true
+  playwright: false

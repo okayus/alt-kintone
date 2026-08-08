@@ -16,6 +16,17 @@ RUN corepack enable
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+# vitest browser mode（apps/main のコンポーネントテスト）が使う実 Chromium。
+# playwright にダウンロードさせず apt 版を executablePath で指す
+# （apps/main/vite.config.ts）— playwright のバージョンとブラウザ実体の版結合を
+# 避けるため。フォントはヘッドレスの日本語描画用（無いと豆腐になる）。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium fonts-ipafont-gothic \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+ENV CHROMIUM_PATH=/usr/bin/chromium
+# playwright パッケージの postinstall（ブラウザDL）は使わない、の明示。
+# pnpm-workspace.yaml の allowBuilds: playwright: false と対になる
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 WORKDIR /app
 
 # ---- dev -------------------------------------------------------------------
