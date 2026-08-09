@@ -1,5 +1,5 @@
 {
-  "name": "@alt/cli",
+  "name": "@alt/diff",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -20,14 +20,6 @@
     "fmt:check": "vp fmt --check"
   },
   "dependencies": {
-    "@alt/definitions": "workspace:*",
-    "@alt/diff": "workspace:*",
-    "@alt/dsl": "workspace:*",
-    "@alt/sql": "workspace:*",
-    "better-sqlite3": "^13.0.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "@alt/dsl": "workspace:*"
   }
 }

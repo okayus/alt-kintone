@@ -838,6 +838,51 @@ tbody tr:last-child td {
   opacity: 0.35;
 }
 
+/* 押せないグラフ（差分の図は読むだけ） */
+.flow-graph .node.fixed {
+  cursor: default;
+}
+
+/* --- 差分の描き分け（フェーズ10・合併グラフ） ---
+   追加＝実線で強調 / 削除＝点線で取り消し / 変更＝枠を濃く。
+   「動いたもの＝変わったもの」と読めるよう、位置は変更後の定義で決まっている */
+
+.flow-graph .node.added rect {
+  fill: #e9f6ec;
+  stroke: #2f8f4e;
+  stroke-width: 2.5;
+}
+
+.flow-graph .node.removed rect {
+  fill: var(--panel);
+  stroke: #b9bfc6;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.flow-graph .node.removed text {
+  fill: #8b939c;
+  text-decoration: line-through;
+}
+
+.flow-graph .node.changed rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.flow-graph .edge.added,
+.flow-legend-line .edge.added {
+  stroke: #2f8f4e;
+  stroke-width: 2.4;
+  stroke-dasharray: none;
+}
+
+.flow-graph .edge.removed,
+.flow-legend-line .edge.removed {
+  stroke: #c2c8ce;
+  stroke-dasharray: 3 4;
+}
+
 .flow-legend {
   display: flex;
   gap: 10px;
@@ -1043,6 +1088,7 @@ tbody tr:last-child td {
 /* 何が送られるかを見せる（論点D）。黙って送らない */
 .request-attached,
 .request-target,
+.request-proposal,
 .request-handling {
   margin: 18px 0;
   padding: 12px 16px;
@@ -1053,10 +1099,73 @@ tbody tr:last-child td {
 
 .request-attached h3,
 .request-target h3,
+.request-proposal h3,
 .request-handling h3,
 .request-chat h3 {
   margin: 0 0 10px;
   font-size: 14px;
+}
+
+/* --- この要望で変わること（フェーズ10） --- */
+
+.proposal-group,
+.proposal-graph,
+.proposal-impact {
+  margin: 0 0 14px;
+}
+
+.proposal-where {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.proposal-entries,
+.proposal-impact ul {
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+}
+
+.proposal-entries li {
+  display: flex;
+  gap: 6px;
+  padding: 3px 0;
+  line-height: 1.6;
+}
+
+.proposal-impact li {
+  padding: 3px 0 3px 18px;
+  line-height: 1.6;
+  text-indent: -12px;
+}
+
+.proposal-impact li::before {
+  content: '・';
+}
+
+.proposal-mark {
+  flex: none;
+  width: 1.2em;
+  font-weight: 700;
+}
+
+.proposal-added .proposal-mark {
+  color: #2f8f4e;
+}
+
+.proposal-removed .proposal-mark {
+  color: #b04a4a;
+}
+
+.proposal-changed .proposal-mark {
+  color: var(--accent);
+}
+
+.proposal-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .request-head h2 {

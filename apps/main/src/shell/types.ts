@@ -13,6 +13,7 @@
  * サーバ側の対応は `packages/server/src/records.ts` の `toView`。
  * キーは定義のフィールド名（camelCase）で、列名（snake_case）は外に出てこない。
  */
+import type { BundleDiff } from '@alt/diff'
 
 /** 有効期間型のメタ。「誰が・いつ・どのフローのどのステップで」変えたか。 */
 export interface VersionMeta {
@@ -180,6 +181,12 @@ export interface ChangeRequest extends Meta {
   /** サーバが埋める（`fill: 'createdAt'`）。 */
   filedAt: string
   resolution: string | null
+  /**
+   * 「この要望でこう変える予定」の定義差分。`alt diff --request <id>` が書く
+   * （docs/impl/phase-10-definition-diff.md 決定D）。**保存物なので、
+   * 中のラベルは書き込み時に解決済み**。FE は定義を引き直さない。
+   */
+  proposal: BundleDiff | null
   /** 要望フローの target なので必ず付く。 */
   _flow: FlowView | null
 }

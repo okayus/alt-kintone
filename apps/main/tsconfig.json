@@ -18,6 +18,7 @@
       // prebuild なしで typecheck できるようソースを直接指す。
       // 同じ解決を実行時にも与えるのが apps/main/vite.config.ts の resolve.alias。
       "@alt/definitions": ["../../packages/definitions/src/index.ts"],
+      "@alt/diff": ["../../packages/diff/src/index.ts"],
       "@alt/dsl": ["../../packages/dsl/src/index.ts"]
     }
   },

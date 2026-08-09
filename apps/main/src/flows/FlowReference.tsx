@@ -16,16 +16,19 @@
  */
 import { flows, roles, tables } from '@alt/definitions'
 import {
+  layoutFlow,
   referencedFields,
   ROOT_SOURCE,
   usedTables,
   type AutoCheck,
   type BindingRole,
   type FlowDef,
+  type FlowGraph,
+  type GraphEdge,
   type StepDef,
 } from '@alt/dsl'
 import { useMemo, useState } from 'react'
-import { layoutFlow, type FlowGraph, type GraphEdge } from './flowGraph'
+import { FlowGraphSvg, LegendLine } from './FlowGraphSvg'
 
 export interface FlowReferenceProps {
   flowKey: string
@@ -63,7 +66,13 @@ export function FlowReference({ flowKey, currentStep }: FlowReferenceProps) {
 
       <section className="ref-panel">
         <h3>遷移</h3>
-        <GraphSvg graph={graph} selected={selected} currentStep={currentStep} onSelect={select} />
+        <FlowGraphSvg
+          nodes={graph.nodes}
+          edges={graph.edges}
+          selected={selected}
+          currentStep={currentStep}
+          onSelect={select}
+        />
         <p className="flow-legend">
           <LegendLine kind="forward" /> 前進
           <LegendLine kind="skip" /> スキップ
@@ -307,143 +316,5 @@ function UsedData({ flow }: { flow: FlowDef }) {
         })}
       </tbody>
     </table>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// 遷移グラフの描画（SVG）
-// ---------------------------------------------------------------------------
-
-// レイアウト定数。ノード数が増えたら見直す（それでも苦しければグラフごと捨てる）
-const NODE_W = 118
-const NODE_H = 36
-const COL_GAP = 68
-const ROW_GAP = 26
-const PAD = 16
-const LANE_GAP = 18
-
-function GraphSvg({
-  graph,
-  selected,
-  currentStep,
-  onSelect,
-}: {
-  graph: FlowGraph
-  selected: string | undefined
-  currentStep: string | undefined
-  onSelect: (key: string) => void
-}) {
-  const nodes = new Map(graph.nodes.map((node) => [node.key, node]))
-  // スキップ辺はノードの上、後退辺は下を回す（5-3）。それぞれ専用レーンを積む
-  const skips = graph.edges.filter((edge) => edge.kind === 'skip')
-  const backs = graph.edges.filter((edge) => edge.kind === 'back')
-
-  const top = PAD + skips.length * LANE_GAP
-  const maxRank = Math.max(...graph.nodes.map((node) => node.rank))
-  const maxRow = Math.max(...graph.nodes.map((node) => node.row))
-  const x = (rank: number): number => PAD + rank * (NODE_W + COL_GAP)
-  const y = (row: number): number => top + row * (NODE_H + ROW_GAP)
-  const bottom = y(maxRow) + NODE_H
-  const width = x(maxRank) + NODE_W + PAD
-  const height = bottom + backs.length * LANE_GAP + PAD
-
-  const touches = (edge: GraphEdge): boolean =>
-    selected !== undefined && (edge.from === selected || edge.to === selected)
-  const edgeClass = (edge: GraphEdge): string =>
-    `edge ${edge.kind}${selected === undefined ? '' : touches(edge) ? ' hot' : ' dim'}`
-  const nodeClass = (key: string): string => {
-    const terminal = nodes.get(key)?.terminal === true ? ' terminal' : ''
-    const current = key === currentStep ? ' current' : ''
-    const state =
-      selected === undefined
-        ? ''
-        : key === selected
-          ? ' selected'
-          : graph.edges.some((edge) => touches(edge) && (edge.from === key || edge.to === key))
-            ? ''
-            : ' dim'
-    return `node${terminal}${current}${state}`
-  }
-
-  const path = (edge: GraphEdge): string => {
-    const from = nodes.get(edge.from)
-    const to = nodes.get(edge.to)
-    if (from === undefined || to === undefined) return ''
-    if (edge.kind === 'skip') {
-      // 上のレーンへ出て横移動し、相手の上辺へ降りる
-      const lane = PAD + skips.indexOf(edge) * LANE_GAP
-      const fx = x(from.rank) + NODE_W / 2
-      const tx = x(to.rank) + NODE_W / 2
-      return `M ${fx} ${y(from.row)} L ${fx} ${lane} L ${tx} ${lane} L ${tx} ${y(to.row)}`
-    }
-    if (edge.kind === 'back') {
-      // 下のレーンを回って戻る
-      const lane = bottom + LANE_GAP * (backs.indexOf(edge) + 1)
-      const fx = x(from.rank) + NODE_W / 2
-      const tx = x(to.rank) + NODE_W / 2
-      const fy = y(from.row) + NODE_H
-      const ty = y(to.row) + NODE_H
-      return `M ${fx} ${fy} L ${fx} ${lane} L ${tx} ${lane} L ${tx} ${ty}`
-    }
-    // 前進は右辺から左辺へ。行が違えばゆるやかな曲線
-    const fx = x(from.rank) + NODE_W
-    const fy = y(from.row) + NODE_H / 2
-    const tx = x(to.rank)
-    const ty = y(to.row) + NODE_H / 2
-    const mid = (fx + tx) / 2
-    return `M ${fx} ${fy} C ${mid} ${fy}, ${mid} ${ty}, ${tx} ${ty}`
-  }
-
-  return (
-    <svg
-      className="flow-graph"
-      viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      role="img"
-      aria-label="ステップの遷移図"
-    >
-      <defs>
-        <marker
-          id="flow-arrow"
-          viewBox="0 0 8 8"
-          refX="7"
-          refY="4"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 8 4 L 0 8 z" className="flow-arrow-head" />
-        </marker>
-      </defs>
-      {graph.edges.map((edge) => (
-        <path
-          key={`${edge.from}-${edge.to}`}
-          className={edgeClass(edge)}
-          d={path(edge)}
-          markerEnd="url(#flow-arrow)"
-        />
-      ))}
-      {graph.nodes.map((node) => (
-        <g
-          key={node.key}
-          className={nodeClass(node.key)}
-          transform={`translate(${x(node.rank)}, ${y(node.row)})`}
-          onClick={() => onSelect(node.key)}
-        >
-          <rect width={NODE_W} height={NODE_H} rx={7} />
-          <text x={NODE_W / 2} y={NODE_H / 2 + 1} textAnchor="middle" dominantBaseline="central">
-            {node.name}
-          </text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-function LegendLine({ kind }: { kind: GraphEdge['kind'] }) {
-  return (
-    <svg className="flow-legend-line" viewBox="0 0 36 8" width="36" height="8" aria-hidden="true">
-      <path className={`edge ${kind}`} d="M 1 4 L 35 4" />
-    </svg>
   )
 }

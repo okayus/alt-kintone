@@ -14,6 +14,7 @@ export default defineConfig({
       '@alt/dsl': source('dsl'),
       '@alt/sql': source('sql'),
       '@alt/definitions': source('definitions'),
+      '@alt/diff': source('diff'),
       '@alt/server': source('server'),
       '@alt/cli': source('cli'),
     },

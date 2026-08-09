@@ -19,6 +19,7 @@ import {
 } from '@alt/dsl'
 import { useCallback, useEffect, useState } from 'react'
 import { RequestChat } from './RequestChat'
+import { RequestProposal } from './RequestProposal'
 import type { ScreenProps } from '../../shell/App'
 import { AdvanceButtons } from '../../shell/flow/AdvanceButtons'
 import { exitLabelOf, stepNameOf } from '../../shell/flow/definitions'
@@ -142,6 +143,9 @@ export function RequestDetail({
       )}
 
       <Target record={record} />
+
+      {/* 対応者が `alt diff --request` で添えたときだけ出る（フェーズ10 決定D） */}
+      {record.proposal !== null && <RequestProposal proposal={record.proposal} />}
 
       <Handling
         record={record}

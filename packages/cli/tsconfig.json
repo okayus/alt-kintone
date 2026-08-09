@@ -11,6 +11,7 @@
       // `tsx --tsconfig packages/cli/tsconfig.json` を渡しているため（--tsconfig が無いと
       // tsx は workspace シンボリックリンク経由で dist/ の古い成果物を読む）。
       "@alt/definitions": ["../../packages/definitions/src/index.ts"],
+      "@alt/diff": ["../../packages/diff/src/index.ts"],
       "@alt/dsl": ["../../packages/dsl/src/index.ts"],
       "@alt/sql": ["../../packages/sql/src/index.ts"]
     }

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // packages/sql と同じ設定。tsc は --noEmit の typecheck 専用で、実ビルドは
+    // tsdown (`vp pack`) が行う。paths が rootDir の外を指すため noEmit で回避する。
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@alt/dsl": ["../../packages/dsl/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist"]
+}

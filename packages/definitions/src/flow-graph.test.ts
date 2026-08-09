@@ -1,13 +1,14 @@
 /**
- * グラフのレイアウトが、実際の営業フロー定義に対して意図どおりになるか。
+ * グラフのレイアウト（`@alt/dsl` の `layoutFlow`）が、実際の営業フロー定義に対して
+ * 意図どおりになるか。
  *
- * 人工的なグラフではなく客先定義そのもので検証する（`steps.test.ts` と同じ方針）。
- * ここが崩れると参照画面の遷移図が嘘をつく。
+ * 人工的なグラフではなく客先定義そのもので検証する。ここが崩れると参照画面の遷移図が
+ * 嘘をつく。関数は `@alt/dsl` にあるが、**フィクスチャがこのパッケージにある**ので
+ * テストはここに置く（フェーズ10 決定C の移設で `apps/main` から移ってきた）。
  */
-import { layoutFlow } from './flowGraph'
-import { deal, sales } from '@alt/definitions'
-import { flow, step, type FlowDef } from '@alt/dsl'
+import { flow, layoutFlow, step, type FlowDef } from '@alt/dsl'
 import { describe, expect, it } from 'vitest'
+import { deal, sales } from './index.js'
 
 const graph = layoutFlow(sales)
 const node = (key: string) => graph.nodes.find((n) => n.key === key)

@@ -29,6 +29,9 @@ importers:
       '@alt/definitions':
         specifier: workspace:*
         version: link:../../packages/definitions
+      '@alt/diff':
+        specifier: workspace:*
+        version: link:../../packages/diff
       '@alt/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -66,6 +69,9 @@ importers:
       '@alt/definitions':
         specifier: workspace:*
         version: link:../definitions
+      '@alt/diff':
+        specifier: workspace:*
+        version: link:../diff
       '@alt/dsl':
         specifier: workspace:*
         version: link:../dsl
@@ -84,6 +90,12 @@ importers:
         version: 7.6.13
 
   packages/definitions:
+    dependencies:
+      '@alt/dsl':
+        specifier: workspace:*
+        version: link:../dsl
+
+  packages/diff:
     dependencies:
       '@alt/dsl':
         specifier: workspace:*

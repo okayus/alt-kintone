@@ -27,6 +27,7 @@ services:
       - /app/apps/main/node_modules
       - /app/packages/cli/node_modules
       - /app/packages/definitions/node_modules
+      - /app/packages/diff/node_modules
       - /app/packages/dsl/node_modules
       - /app/packages/server/node_modules
       - /app/packages/sql/node_modules

@@ -9,6 +9,7 @@
  */
 import { apply, openDatabase, resolveDbPath } from './apply.js'
 import { loadBundle } from './bundle.js'
+import { attachProposal, computeDiff, formatDiff, loadApplied } from './diff.js'
 import { seed } from './seed.js'
 import { validate, type ValidationError } from './validate.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -39,6 +40,13 @@ const USAGE = `alt — alt-kintone の定義を検証し、適用する
       定義バンドルを JSON で吐く（バックエンドへの受け渡し形）
       --out を付けるとファイルに書く。バックエンドはこれを起動時に読む
 
+  alt diff [--applied <path>] [--db <path>] [--request <id>] [--no-impact] [--json]
+      適用済みの定義と作業ツリーの定義を比べ、業務の言葉で出す
+      --applied  比較元（既定: data/definitions.json ＝ サーバが読んでいる定義）
+      --request  差分を「変更案」として要望レコードに書き込む
+      --no-impact  DB を見ない（いまのデータへの影響を数えない）
+      ※ 差分があっても終了コードは 0（検査ではなく説明なので）
+
   alt seed [--db <path>] [--reset] [--deals <N>] [--json]
       開発用のデモデータを入れる。--reset で既存データを消してから入れる
       --deals <N> で N 件のダミー案件を追加する（一覧の性能検証用。乱数は固定シード）
@@ -59,6 +67,8 @@ export function run(argv: readonly string[], io: Io = consoleIo): number {
         return runApply(rest, io)
       case 'export':
         return runExport(rest, io)
+      case 'diff':
+        return runDiff(rest, io)
       case 'seed':
         return runSeed(rest, io)
       case '--help':
@@ -141,6 +151,52 @@ function runExport(args: readonly string[], io: Io): number {
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, `${json}\n`)
   io.out(`✔ ${out} に定義を書き出した`)
+  return 0
+}
+
+/**
+ * 適用済みの定義との差分。
+ *
+ * ⚠ **差分があっても 0 で終わる。** `validate` と違って検査ではなく説明なので、
+ * CI が「差分があるから失敗」と読むと運用が破綻する。
+ */
+function runDiff(args: readonly string[], io: Io): number {
+  const opts = options(args, {
+    json: { type: 'boolean' },
+    applied: { type: 'string' },
+    db: { type: 'string' },
+    request: { type: 'string' },
+    'no-impact': { type: 'boolean' },
+  })
+
+  const applied = loadApplied(typeof opts['applied'] === 'string' ? opts['applied'] : undefined)
+  const working = loadBundle()
+  const requestId = typeof opts['request'] === 'string' ? opts['request'] : undefined
+  // 要望に添えるときは DB が要る（書き込み先なので --no-impact でも開く）
+  const needsDb = opts['no-impact'] !== true || requestId !== undefined
+
+  let diff = computeDiff(applied, working)
+  let attached: string | undefined
+  if (needsDb) {
+    const path = resolveDbPath(
+      typeof opts['db'] === 'string' ? opts['db'] : undefined,
+      process.env['DATABASE_URL'],
+    )
+    const db = openDatabase(path)
+    try {
+      diff = computeDiff(applied, working, opts['no-impact'] === true ? undefined : db)
+      if (requestId !== undefined) attached = attachProposal(db, working, requestId, diff)
+    } finally {
+      db.close()
+    }
+  }
+
+  if (opts['json'] === true) {
+    io.out(JSON.stringify({ ok: true, applied: applied.path, ...diff }, null, 2))
+    return 0
+  }
+  for (const line of formatDiff(diff, applied)) io.out(line)
+  if (attached !== undefined) io.out(`\n✔ 要望 ${attached} に変更案として添えた`)
   return 0
 }
 

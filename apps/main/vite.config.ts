@@ -18,6 +18,7 @@ export default defineConfig({
     alias: {
       '@alt/dsl': source('dsl'),
       '@alt/definitions': source('definitions'),
+      '@alt/diff': source('diff'),
     },
   },
   server: {
