@@ -24,6 +24,28 @@ describe('parseRoute', () => {
     expect(parseRoute('#/flows/sales?step=')).toEqual({ name: 'flow', key: 'sales' })
   })
 
+  it('要望の一覧・詳細を拾う', () => {
+    expect(parseRoute('#/requests')).toEqual({ name: 'requests' })
+    expect(parseRoute('#/requests/')).toEqual({ name: 'requests' })
+    expect(parseRoute('#/requests/cr-competitor')).toEqual({
+      name: 'request',
+      id: 'cr-competitor',
+    })
+  })
+
+  it('起票は ID より先に見る（"new" が ID として解釈されない）', () => {
+    expect(parseRoute('#/requests/new')).toEqual({ name: 'requestNew' })
+    expect(parseRoute('#/requests/new/')).toEqual({ name: 'requestNew' })
+  })
+
+  it('起票は「どこから押したか」を持ち回る（コンテキスト自動添付の入力）', () => {
+    expect(parseRoute('#/requests/new?from=%23%2Fdeals%2Fd-1')).toEqual({
+      name: 'requestNew',
+      from: '#/deals/d-1',
+    })
+    expect(parseRoute('#/requests/new?from=')).toEqual({ name: 'requestNew' })
+  })
+
   it('href と往復する', () => {
     const id = 'd-山田/1'
     expect(parseRoute(href.deal(id))).toEqual({ name: 'deal', id })
@@ -32,6 +54,12 @@ describe('parseRoute', () => {
       name: 'flow',
       key: 'sales',
       step: 'proposed',
+    })
+    expect(parseRoute(href.request('cr-1'))).toEqual({ name: 'request', id: 'cr-1' })
+    // from には別のハッシュ（`#` と `/` を含む）が入るので、往復できることが要点
+    expect(parseRoute(href.requestNew('#/deals/d-1?x=1'))).toEqual({
+      name: 'requestNew',
+      from: '#/deals/d-1?x=1',
     })
   })
 })

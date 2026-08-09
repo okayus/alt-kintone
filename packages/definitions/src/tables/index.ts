@@ -1,4 +1,5 @@
 export { activity } from './activity.js'
+export { changeRequest, changeRequestMessage, changeRequestRead } from './change-request.js'
 export { company } from './company.js'
 export { contact } from './contact.js'
 export { deal } from './deal.js'

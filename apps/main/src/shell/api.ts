@@ -101,6 +101,11 @@ export interface Client {
   /** 一覧を窓で引く。総件数と時点が要るので、レスポンスをそのまま返す。 */
   listPage<T>(table: string, opts?: QueryOptions): Promise<ListResponse<T>>
   get<T>(table: string, id: string, opts?: QueryOptions): Promise<T>
+  /**
+   * 新規作成（フェーズ9 で追加。それまで FE は作成の口を持っていなかった）。
+   * サーバが埋める列（`id` / 有効期間型 / `fill`）は送らない — 送ると 400 になる。
+   */
+  create<T>(table: string, body: unknown): Promise<T>
   patch<T>(table: string, id: string, body: unknown): Promise<T>
   advance<T>(table: string, id: string, to: string): Promise<AdvanceResponse<T>>
   setCheck<T>(table: string, id: string, key: string, checked: boolean): Promise<T>
@@ -138,6 +143,9 @@ export function createClient(auth: AuthHeaders, flow = 'sales'): Client {
     },
     async get<T>(table: string, id: string, opts?: QueryOptions): Promise<T> {
       return (await request<{ record: T }>('GET', `${table}/${id}`, opts)).record
+    },
+    async create<T>(table: string, body: unknown): Promise<T> {
+      return (await request<{ record: T }>('POST', table, {}, body)).record
     },
     async patch<T>(table: string, id: string, body: unknown): Promise<T> {
       return (await request<{ record: T }>('PATCH', `${table}/${id}`, {}, body)).record

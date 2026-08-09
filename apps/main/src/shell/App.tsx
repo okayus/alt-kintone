@@ -1,23 +1,29 @@
 /**
  * 共通シェル。docs/product-concept.md §4-3
  *
- * **共通化するのはここまで**。ナビ・レイアウト・エラー表示・時点指定・
- * マスタの名前解決までがシェルで、一覧やフォームの中身は業務画面（`flows/sales/`）に書く。
+ * **共通化するのはここまで**。ナビ・レイアウト・エラー表示・時点指定・マスタの名前解決と、
+ * **業務フロー描画**（`flow/` — 現在地・出口条件・遷移。フェーズ9 決定H）がシェルで、
+ * 一覧やフォームの中身は業務画面（`flows/sales/`・`flows/request/`）に書く。
  * 一覧・フォームまで共通部品にすると部品の表現力が上限になる ＝ kintone の失敗構造。
  *
  * **FEは1つのアプリに統合する**（§4-3）。業務フローごとにアプリを分けない。
- * いまナビに項目が1つしか無いのは、フローが1本しか定義されていないからにすぎない。
+ * フェーズ9 で2本目（改善要望）が載り、ナビに項目が増えただけで済んでいる。
  */
-import { flows, sales } from '@alt/definitions'
+import { flows, request as requestFlow, sales } from '@alt/definitions'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError, MASTER_LIMIT, type Client } from './api'
 import { asOfParam } from './format'
 // 型だけの import なので実行時のコードは含まれない（決定F の「本番ビルドに含めない」は保たれる）。
 import type { DevUser } from './auth/dev-user'
 import { href, useRoute } from './router'
+import { RequestButton } from './RequestButton'
+import { UnreadBadge } from './UnreadBadge'
 import type { Company, Employee } from './types'
 import { FlowReference } from '../flows/FlowReference'
+import { RequestDetail } from '../flows/request/RequestDetail'
+import { RequestList } from '../flows/request/RequestList'
+import { RequestNew } from '../flows/request/RequestNew'
 import { DealDetail } from '../flows/sales/DealDetail'
 import { DealList } from '../flows/sales/DealList'
 
@@ -35,6 +41,14 @@ export interface ScreenProps {
   asOf: string | undefined
   /** 詐称中のユーザー。切り替えたら読み直すための依存キーでもある。 */
   user: string
+  /**
+   * ログイン中の従業員ID。マスタから引いてシェルが1回だけ解決する。
+   *
+   * 「自分」の判定は画面ごとに要る（起票者・投稿者・未読）が、API が返すのは ID なので
+   * メールアドレス（`user`）のままでは突き合わせられない。**認可の判定には使わない**
+   * — 可否は `_permissions` が答える（§4-1）。ここで使うのは表示と入力の既定値だけ。
+   */
+  meId: string
   onError: (error: unknown) => void
 }
 
@@ -44,13 +58,25 @@ export interface DevUserSwitch {
   onChange: (email: string) => void
 }
 
+/**
+ * 業務フローごとの API クライアント。
+ *
+ * **`flow` はクライアント単位で決める**（呼び出しごとに渡せるようにしない）。
+ * `flow` は認可の範囲と `changed_flow` を決める値なので、指定漏れが
+ * 「気づかないうちに別のフローの文脈で書いた」になる。画面はどちらか1本に属している。
+ */
+export interface Clients {
+  sales: Client
+  request: Client
+}
+
 export interface AppProps {
-  client: Client
+  clients: Clients
   /** 開発用ユーザー切替。本番エントリでは渡さないのでヘッダに出ない。 */
   devUsers: DevUserSwitch
 }
 
-export function App({ client, devUsers }: AppProps) {
+export function App({ clients, devUsers }: AppProps) {
   const route = useRoute()
   const [user, setUser] = useState(devUsers.current)
   // 時点も URL に載せる（フェーズ6、論点D 補）。「先月末時点のこの絞り込み」ごと共有できる
@@ -73,13 +99,21 @@ export function App({ client, devUsers }: AppProps) {
   useEffect(() => {
     let live = true
     setError(null)
-    Promise.all([
-      client.list<Company>('company', { limit: MASTER_LIMIT }),
-      client.list<Employee>('employee', { limit: MASTER_LIMIT }),
-    ])
-      .then(([companies, employees]) => {
+    // ⚠ **従業員は要望フローから引く。** 全ロールがこのフローの operator なので
+    //    （起票ステップの担当が ROLE_KEYS）、営業フローに参加していない人でも名前を引ける。
+    //    営業フローから引いていた頃は、制作担当がシェルの起動時点で 403 になっていた
+    const employees = clients.request.list<Employee>('employee', { limit: MASTER_LIMIT })
+    // ⚠ 会社は営業フローのデータなので、参加していない人は読めなくて**正しい**。
+    //    ここでエラーにすると要望画面まで赤帯になるので、空のまま進む。
+    //    案件の画面はそれぞれ自分で 403 を出す（黙って壊れるのはそちらでは起きない）
+    const companies = clients.sales
+      .list<Company>('company', { limit: MASTER_LIMIT })
+      .catch(() => [] as Company[])
+
+    Promise.all([companies, employees])
+      .then(([companyList, employeeList]) => {
         if (!live) return
-        setMasters({ companies: byId(companies), employees: byId(employees) })
+        setMasters({ companies: byId(companyList), employees: byId(employeeList) })
       })
       .catch((cause: unknown) => {
         if (!live) return
@@ -89,15 +123,29 @@ export function App({ client, devUsers }: AppProps) {
     return () => {
       live = false
     }
-  }, [client, user])
+  }, [clients, user])
 
-  const screen: ScreenProps = {
-    client,
-    masters,
-    asOf: asOfParam(asOf),
-    user,
-    onError,
-  }
+  // 画面を移ったらエラーを消す。**エラーはそれを出した画面のもの**で、次の画面に
+  // 貼り付いたままだと「移った先が壊れている」ように見える。フローが1本のうちは
+  // 起きなかった壊れ方で、フェーズ9 で制作担当が案件一覧の 403 を要望画面まで
+  // 連れて行ったことで見つかった
+  useEffect(() => {
+    setError(null)
+  }, [route])
+
+  // 「自分」は従業員マスタから引く。API が返すのは ID なので、メールアドレスのままでは
+  // 起票者・投稿者・未読の突き合わせができない
+  const meId = useMemo(
+    () => [...masters.employees.values()].find((employee) => employee.email === user)?.id ?? '',
+    [masters, user],
+  )
+
+  const screen = useMemo(
+    () => ({ masters, asOf: asOfParam(asOf), user, meId, onError }),
+    [masters, asOf, user, meId, onError],
+  )
+
+  const wide = route.name === 'deals'
 
   return (
     <div className="app">
@@ -105,9 +153,9 @@ export function App({ client, devUsers }: AppProps) {
         <a className="app-brand" href={href.deals()}>
           alt-kintone
         </a>
-        {/* フロー名は定義から取る。ここが乖離しないのは §4-3 の狙いそのもの */}
-        <span className="app-flow">{sales.name}</span>
         <span className="app-spacer" />
+        {/* どの画面からでも1クリックで起票できる（論点D）。押した瞬間の画面を持ち回る */}
+        <RequestButton />
         <label className="app-asof" title="UTC で解釈する（DB に入っているのと同じ形）">
           時点
           <input
@@ -134,17 +182,29 @@ export function App({ client, devUsers }: AppProps) {
       </header>
 
       <nav className="app-nav">
-        <a className={route.name === 'deals' ? 'current' : ''} href={href.deals()}>
-          案件
+        <a
+          className={route.name === 'deals' || route.name === 'deal' ? 'current' : ''}
+          href={href.deals()}
+        >
+          {sales.name}
         </a>
-        {/* フローが増えても壊れない形で回す（フェーズ5）。1本のうちは総称で出す */}
+        <a
+          className={route.name === 'requests' || route.name === 'request' ? 'current' : ''}
+          href={href.requests()}
+        >
+          {requestFlow.name}
+          {/* 未読はシェルの仕事（論点H）。要望画面を開いていないと気づけない形にしない */}
+          <UnreadBadge client={clients.request} user={user} meId={meId} />
+        </a>
+        <span className="app-nav-sep" aria-hidden="true" />
+        {/* フローが増えても壊れない形で回す（フェーズ5）。定義を足すと参照画面が増える */}
         {flows.map((flow) => (
           <a
             key={flow.key}
             className={route.name === 'flow' && route.key === flow.key ? 'current' : ''}
             href={href.flow(flow.key)}
           >
-            {flows.length === 1 ? '業務フロー' : flow.name}
+            {flow.name}の流れ
           </a>
         ))}
       </nav>
@@ -157,11 +217,17 @@ export function App({ client, devUsers }: AppProps) {
 
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
-      <main className={`app-main${route.name === 'deals' ? ' wide' : ''}`}>
+      <main className={`app-main${wide ? ' wide' : ''}`}>
         {route.name === 'deals' ? (
-          <DealList {...screen} />
+          <DealList {...screen} client={clients.sales} />
         ) : route.name === 'deal' ? (
-          <DealDetail {...screen} id={route.id} />
+          <DealDetail {...screen} client={clients.sales} id={route.id} />
+        ) : route.name === 'requests' ? (
+          <RequestList {...screen} client={clients.request} />
+        ) : route.name === 'requestNew' ? (
+          <RequestNew {...screen} clients={clients} from={route.from} />
+        ) : route.name === 'request' ? (
+          <RequestDetail {...screen} client={clients.request} id={route.id} />
         ) : (
           // 参照画面は API を叩かないので ScreenProps を受け取らない（決定H）
           <FlowReference flowKey={route.key} currentStep={route.step} />

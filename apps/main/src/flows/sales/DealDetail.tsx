@@ -3,18 +3,20 @@
  *
  * ここが**業務フロー定義がUIに現れる場所**（docs/product-concept.md §4-3）:
  * 「現在地の表示 + 出口条件のチェックリスト + 遷移の制御」が1画面に揃う。
+ * その3つはフェーズ9 でシェル（`shell/flow/`）へ移した — 中身が `_flow` しか見ておらず、
+ * どのフローでも同じだったため（決定H）。**一覧とフォームは移していない。**
  *
  * 編集可否・遷移可否は API が返す `_permissions` を見るだけ。**FEで認可を再判定しない**
  * （§4-1）。再判定すると認可が2箇所に分かれて必ず乖離する。
  */
 import { activity as activityDef, deal as dealDef, sales } from '@alt/definitions'
 import { useCallback, useEffect, useState } from 'react'
-import { AdvanceButtons } from './AdvanceButtons'
 import { DealForm } from './DealForm'
-import { ExitChecklist } from './ExitChecklist'
-import { fieldLabel, label } from './labels'
+import { fieldLabel, label } from '../../shell/labels'
 import { exitLabel, stepName } from './steps'
-import { StepTrack } from './StepTrack'
+import { AdvanceButtons } from '../../shell/flow/AdvanceButtons'
+import { ExitChecklist } from '../../shell/flow/ExitChecklist'
+import { StepTrack } from '../../shell/flow/StepTrack'
 import type { ScreenProps } from '../../shell/App'
 import { dateTime, day, orDash, yen } from '../../shell/format'
 import { href } from '../../shell/router'

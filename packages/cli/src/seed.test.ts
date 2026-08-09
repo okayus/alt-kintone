@@ -29,7 +29,11 @@ describe('seed', () => {
 
   it('案件は _flow_state の行つきで入る（ステップは業務テーブルの列ではない）', () => {
     const { db, result } = seeded()
-    const states = db.prepare('SELECT * FROM "_flow_state"').all() as Array<{
+    // `_flow_state` はレコード × フローの関係なので、**フローの数だけ相乗りする**。
+    // 案件の話をしているので table_name で絞る（要望も target なので同じ表に入る）
+    const states = db
+      .prepare(`SELECT * FROM "_flow_state" WHERE "table_name" = 'deal'`)
+      .all() as Array<{
       step: string
       valid_to: string | null
     }>
@@ -66,6 +70,32 @@ describe('seed', () => {
   })
 
   /**
+   * 改善要望（docs/impl/phase-9-change-requests.md T4）。
+   * `--reset` 直後でも一覧が空にならないこと、対象が**定義の語彙**で入っていることを見る。
+   */
+  it('要望も要望フローの文脈で入る（対象は定義の合成キー）', () => {
+    const { db, result } = seeded()
+    expect(result.inserted['change_request']).toBe(3)
+    expect(result.inserted['change_request_message']).toBe(2)
+
+    const rows = db
+      .prepare(`SELECT * FROM "change_request" WHERE "id" = 'cr-competitor'`)
+      .all() as Array<Record<string, unknown>>
+    expect(rows[0]?.['target_step']).toBe('sales.proposed')
+    expect(rows[0]?.['target_field']).toBe('deal.competitor')
+    // 「どのフローで書かれたか」は要望フロー（営業フローではない）
+    expect(rows[0]?.['changed_flow']).toBe('request')
+    // createdAt はサーバが埋める列だが、シードは insertRecord を直に叩くので明示的に入れる
+    expect(rows[0]?.['filed_at']).not.toBeNull()
+
+    const [state] = db
+      .prepare(`SELECT * FROM "_flow_state" WHERE "table_name" = 'change_request'`)
+      .all() as Array<{ flow: string }>
+    expect(state?.flow).toBe('request')
+    db.close()
+  })
+
+  /**
    * 一覧の窓取得・性能を検証する材料（docs/impl/phase-6-list-grid.md T1）。
    * **固定シード**なので、同じ N なら毎回同じデータになる。
    */
@@ -80,7 +110,10 @@ describe('seed', () => {
     it('指定した件数だけ増え、_flow_state も同じ数だけ入る', () => {
       const { db, result } = generated(120)
       expect(result.inserted['deal']).toBe(5 + 120)
-      expect(result.inserted['_flow_state']).toBe(5 + 120)
+      const [state] = db
+        .prepare(`SELECT count(*) AS n FROM "_flow_state" WHERE "table_name" = 'deal'`)
+        .all() as Array<{ n: number }>
+      expect(state?.n).toBe(5 + 120)
       db.close()
     })
 

@@ -40,7 +40,11 @@ describe('routes', () => {
     expect(paths('POST')).toContain('/api/deal/{id}/advance')
     // activity は primary バインド（所有）だが target ではない
     expect(paths('POST')).not.toContain('/api/activity/{id}/advance')
-    expect(paths('PUT')).toEqual(['/api/deal/{id}/checks/{key}'])
+    // PUT はステップ操作（手動チェック）しか無いので、target の集合とちょうど一致する。
+    // 定義から導いて比べる — フローが増えるたびに書き足す形にすると、
+    // 「target 以外に生えていない」という本題のほうが緩む
+    const targets = [...new Set(bundle.flows.map((f) => f.target))].sort()
+    expect(paths('PUT')).toEqual(targets.map((table) => `/api/${table}/{id}/checks/{key}`))
   })
 
   it('どのフローも使っていないテーブルにはルートが生えない', () => {

@@ -41,6 +41,11 @@ export interface Route {
 export interface DefinitionRegistry {
   /** `compilePred` に渡すテーブル集合。 */
   tables: TableRegistry
+  /**
+   * 業務フローの全体（宣言順）。`tables` と合わせて `DefinitionScope` になり、
+   * `definitionRef` の解決に使う（docs/impl/phase-9-change-requests.md §7-1）。
+   */
+  flows: readonly FlowDef[]
   table(name: string): TableDef | undefined
   flow(key: string): FlowDef | undefined
   step(flowKey: string, stepKey: string): StepDef | undefined
@@ -92,6 +97,7 @@ export function buildRegistry(bundle: DefinitionBundle): DefinitionRegistry {
 
   const registry: DefinitionRegistry = {
     tables: bundle.tables,
+    flows: bundle.flows,
     table: (name) => bundle.tables[name],
     flow: (key) => flows.get(key),
     step: (flowKey, stepKey) => flows.get(flowKey)?.steps.find((s) => s.key === stepKey),

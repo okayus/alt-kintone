@@ -28,8 +28,15 @@ createRoot(container).render(
       結果として一覧 → 詳細 → 戻る の往復でフィルタが残る。
     */}
     <NuqsAdapter>
+      {/*
+        **業務フローごとに1本ずつ作る**（フェーズ9）。`flow` は認可の範囲と `changed_flow` を
+        決める値なので、呼び出しごとに渡す形にすると指定漏れが認可の取り違えになる。
+      */}
       <App
-        client={createClient(devUserHeaders)}
+        clients={{
+          sales: createClient(devUserHeaders, 'sales'),
+          request: createClient(devUserHeaders, 'request'),
+        }}
         devUsers={{ users: DEV_USERS, current: currentDevUser(), onChange: setDevUser }}
       />
     </NuqsAdapter>

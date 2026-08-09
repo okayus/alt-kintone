@@ -91,6 +91,9 @@ function stubClient(deals: Deal[], patches: PatchLog[]): Client {
     async get<T>(): Promise<T> {
       throw new Error('このテストでは使わない')
     },
+    async create<T>(): Promise<T> {
+      throw new Error('このテストでは使わない')
+    },
     async patch<T>(_table: string, id: string, body: unknown): Promise<T> {
       patches.push({ id, body })
       const index = deals.findIndex((deal) => deal.id === id)
@@ -138,6 +141,7 @@ function renderList(client: Client): Harness {
           }}
           asOf={undefined}
           user="yamada@example.com"
+          meId="e-yamada"
           onError={(cause) => errors.push(cause)}
         />
       </NuqsAdapter>

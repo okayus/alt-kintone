@@ -132,6 +132,95 @@ const DEALS = [
   },
 ]
 
+// ---------------------------------------------------------------------------
+// 改善要望（docs/impl/phase-9-change-requests.md T4）
+//
+// `--reset` は要望も消す（決定D）。守っても `alt apply --recreate` がテーブルごと
+// 作り直すので意味がない。代わりに、reset 直後でも一覧が空にならないようサンプルを置く。
+//
+// **対象は definitionRef の合成キーで書く**。綴りを間違えるとサーバが弾くのと同じ値なので、
+// ここが定義と食い違うことは（画面から起票したときと同様に）起きない。
+// ---------------------------------------------------------------------------
+
+const CHANGE_REQUESTS = [
+  {
+    id: 'cr-competitor',
+    kind: 'cannot_record',
+    problem:
+      '失注したとき、どこに負けたかを後から集計できない。競合先の欄はあるが提案の段階では空のままで、失注してから思い出して書いている',
+    wish: '提案のときに競合先を入れる場所がほしい',
+    targetFlow: 'sales',
+    targetStep: 'sales.proposed',
+    targetField: 'deal.competitor',
+    targetTable: 'deal',
+    targetRecordId: 'd-aoi-meo',
+    screenRoute: '#/deals/d-aoi-meo',
+    situation: { unmetChecks: ['decision_maker_met'] },
+    reporterEmployeeId: 'e-yamada',
+    assigneeEmployeeId: 'e-admin',
+    filedAt: T0,
+    step: 'triaged',
+  },
+  {
+    // 森は営業フローの担当ロールでも viewers でもない（＝案件は1件も読めない）。
+    // それでも要望は出せる ＝ フェーズ8 の `roles: ROLE_KEYS` が効いていることのデモ
+    id: 'cr-proof-flow',
+    kind: 'new_business',
+    problem:
+      '原稿の入稿までの進み具合をどこにも記録できていない。いまは制作チームのスプレッドシートで、営業から「あの案件どうなってる」と毎回聞かれる',
+    targetFlow: 'sales',
+    targetTable: 'deal',
+    screenRoute: '#/flows/sales',
+    reporterEmployeeId: 'e-mori',
+    filedAt: T1,
+    step: 'filed',
+  },
+  {
+    id: 'cr-decision-maker',
+    kind: 'exit_mismatch',
+    problem:
+      '「決裁者を特定した」が、店主が一人でやっている店だと最初から満たされてしまい、確認したことにならない',
+    targetFlow: 'sales',
+    targetStep: 'sales.qualified',
+    targetCheck: 'sales.qualified.decision_maker_identified',
+    targetTable: 'deal',
+    screenRoute: '#/flows/sales?step=qualified',
+    reporterEmployeeId: 'e-suzuki',
+    assigneeEmployeeId: 'e-admin',
+    filedAt: T1,
+    resolution: '充足のしかた（howTo）に「一人店舗でも面談で確認したうえで登録する」を足した',
+    step: 'applied',
+  },
+]
+
+/** やりとり。**起票者以外の書き込みがあると出口条件 `replied` が自動で充足する**。 */
+const CHANGE_REQUEST_MESSAGES = [
+  {
+    id: 'crm-1',
+    requestId: 'cr-competitor',
+    authorEmployeeId: 'e-admin',
+    body: '提案ステップの入力欄に競合先を出す方向で考えています。「まだ分からない」も選べたほうがよいですか？',
+    postedAt: T1,
+    authorKind: 'human',
+  },
+  {
+    id: 'crm-2',
+    requestId: 'cr-decision-maker',
+    authorEmployeeId: 'e-admin',
+    body: '条件そのものは変えず、充足のしかたの説明を直しました。次のヨミ会で見てみてください',
+    postedAt: T1,
+    authorKind: 'human',
+  },
+]
+
+/**
+ * 既読。山田は `crm-1` より前に読んだことにしてあるので、**未読が1件ある状態**で始まる
+ * （ナビのバッジが最初から絵になる）。
+ */
+const CHANGE_REQUEST_READS = [
+  { id: 'crr-1', requestId: 'cr-competitor', employeeId: 'e-yamada', readAt: T0 },
+]
+
 const ACTIVITIES = [
   {
     id: 'a-1',
@@ -265,8 +354,15 @@ export function seed(
   bundle: DefinitionBundle,
   opts: { reset?: boolean; deals?: number } = {},
 ): SeedResult {
-  const flow = bundle.flows[0]
-  if (flow === undefined) throw new Error('業務フローが定義されていない')
+  const flowOf = (key: string) => {
+    const def = bundle.flows.find((candidate) => candidate.key === key)
+    if (def === undefined) throw new Error(`業務フロー "${key}" が定義に無い`)
+    return def
+  }
+  // **キーで引く**（添字ではなく）。フローが2本になったので、順序に依存すると
+  // 定義の並べ替えでシードの changed_flow が黙って入れ替わる
+  const flow = flowOf('sales')
+  const requestFlow = flowOf('request')
 
   const table = (name: string) => {
     const def = bundle.tables[name]
@@ -278,21 +374,31 @@ export function seed(
   // 1万件を流すので、同じ SQL を毎回 prepare し直さない
   // （文は列の並びが定義で決まるため、テーブルごとに1本で足りる）
   const statements = new Map<string, Database.Statement>()
-  const insert = (name: string, values: Record<string, unknown>, step: string | null, now = T0) => {
-    const { sql, params } = insertRecord({
-      table: table(name),
-      values,
-      now,
-      context: { changedBy: 'e-admin', changedFlow: flow.key, changedStep: step },
-    })
+  const prepared = (sql: string): Database.Statement => {
     let statement = statements.get(sql)
     if (statement === undefined) {
       statement = db.prepare(sql)
       statements.set(sql, statement)
     }
-    statement.run(...params)
-    inserted[name] = (inserted[name] ?? 0) + 1
+    return statement
   }
+
+  /** 「どのフローの文脈で書いたか」（`changed_flow`）はフローごとに違うので、束ねて作る。 */
+  const inserterFor =
+    (flowKey: string) =>
+    (name: string, values: Record<string, unknown>, step: string | null, now = T0) => {
+      const { sql, params } = insertRecord({
+        table: table(name),
+        values,
+        now,
+        context: { changedBy: 'e-admin', changedFlow: flowKey, changedStep: step },
+      })
+      prepared(sql).run(...params)
+      inserted[name] = (inserted[name] ?? 0) + 1
+    }
+
+  const insert = inserterFor(flow.key)
+  const insertRequestRecord = inserterFor(requestFlow.key)
 
   const cleared = opts.reset === true
   db.transaction(() => {
@@ -306,24 +412,25 @@ export function seed(
     for (const company of COMPANIES) insert('company', company, null)
     for (const contact of CONTACTS) insert('contact', contact, null)
 
-    const enterFlow = (recordId: string, step: string, now = T0) => {
-      const { sql, params } = insertFlowState({
-        table: 'deal',
-        recordId,
-        flow: flow.key,
-        step,
-        unmetChecks: null,
-        now,
-        context: { changedBy: 'e-admin', changedFlow: flow.key, changedStep: null },
-      })
-      let statement = statements.get(sql)
-      if (statement === undefined) {
-        statement = db.prepare(sql)
-        statements.set(sql, statement)
+    /** 「レコードがどのフローのどのステップに居るか」。target のテーブルごとに1つ作る。 */
+    const entererFor =
+      (tableName: string, flowKey: string) =>
+      (recordId: string, step: string, now = T0): void => {
+        const { sql, params } = insertFlowState({
+          table: tableName,
+          recordId,
+          flow: flowKey,
+          step,
+          unmetChecks: null,
+          now,
+          context: { changedBy: 'e-admin', changedFlow: flowKey, changedStep: null },
+        })
+        prepared(sql).run(...params)
+        inserted['_flow_state'] = (inserted['_flow_state'] ?? 0) + 1
       }
-      statement.run(...params)
-      inserted['_flow_state'] = (inserted['_flow_state'] ?? 0) + 1
-    }
+
+    const enterFlow = entererFor('deal', flow.key)
+    const enterRequest = entererFor('change_request', requestFlow.key)
 
     for (const { step, ...deal } of DEALS) {
       insert('deal', deal, step)
@@ -331,6 +438,19 @@ export function seed(
     }
 
     for (const activity of ACTIVITIES) insert('activity', activity, null)
+
+    // 改善要望。`filedAt` / `postedAt` は本来サーバが埋めるが、シードは
+    // `insertRecord` を直に叩く開発用の裏口なので明示的に渡す（決定G）
+    for (const { step, ...request } of CHANGE_REQUESTS) {
+      insertRequestRecord('change_request', request, step, request.filedAt)
+      enterRequest(request.id, step, request.filedAt)
+    }
+    for (const message of CHANGE_REQUEST_MESSAGES) {
+      insertRequestRecord('change_request_message', message, null, message.postedAt)
+    }
+    for (const read of CHANGE_REQUEST_READS) {
+      insertRequestRecord('change_request_read', read, null, read.readAt)
+    }
 
     if (opts.deals !== undefined && opts.deals > 0) {
       generate(opts.deals, insert, enterFlow)

@@ -13,10 +13,13 @@
  *   充足済みは畳む — 日常の使用でノイズにしないため
  * - 直前のステップを未充足のまま進んだ記録（`enteredUnmet`）もここに出す。
  *   「未充足でも進めるが記録に残す」が見える場所
+ *
+ * **どの業務フローのレコードでも同じように描く**（フェーズ9 決定H）。定義は
+ * `_flow.flow`（フローのキー）から引く。
  */
-import { exitCondition, exitLabel } from './steps'
-import { dateTime } from '../../shell/format'
-import type { ExitView, FlowView, Permissions } from '../../shell/types'
+import { exitConditionOf, exitLabelOf } from './definitions'
+import { dateTime } from '../format'
+import type { ExitView, FlowView, Permissions } from '../types'
 
 export interface ExitChecklistProps {
   flow: FlowView
@@ -41,7 +44,7 @@ export function ExitChecklist({ flow, permissions, busy, onToggle, nameOf }: Exi
         {flow.exit.map((exit) => {
           // howTo は API ではなく定義から。定義を値として import しているので
           // 表示のためにサーバを太らせない（docs/impl/phase-4-frontend.md 決定B）
-          const howTo = exitCondition(exit.key)?.howTo
+          const howTo = exitConditionOf(flow.flow, exit.key)?.howTo
           return (
             <li key={exit.key} className={exit.satisfied ? 'satisfied' : 'unsatisfied'}>
               <div className="exit-row">
@@ -118,7 +121,7 @@ function EnteredUnmet({ flow }: { flow: FlowView }) {
   return (
     <p className="entered-unmet">
       ⚠ 未確認 {flow.enteredUnmet.length} 件のまま、このステップに進んでいる:{' '}
-      {flow.enteredUnmet.map(exitLabel).join(' / ')}
+      {flow.enteredUnmet.map((key) => exitLabelOf(flow.flow, key)).join(' / ')}
     </p>
   )
 }

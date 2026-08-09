@@ -7,9 +7,12 @@
  *
  * ⚠ 確認に `window.confirm` を使わない（docs/impl/phase-4-frontend.md 決定G）。
  *    ブラウザのモーダルはページのイベントを止めるので、自動操作での動作確認が潰れる。
+ *
+ * **どの業務フローのレコードでも同じように描く**（フェーズ9 決定H）。もともと `_flow` と
+ * `_permissions` しか見ていなかったので、シェルへ移すのに中身の変更は要らなかった。
  */
 import { useState } from 'react'
-import type { FlowView, Permissions } from '../../shell/types'
+import type { FlowView, Permissions } from '../types'
 
 export interface AdvanceButtonsProps {
   flow: FlowView

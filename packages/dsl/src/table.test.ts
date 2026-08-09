@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   boolean,
+  createdAt,
   datetime,
+  definitionRef,
   enumOf,
   foreignKeysTo,
   integer,
@@ -174,6 +176,94 @@ describe('table', () => {
       label: '',
       global: false,
       fields: {},
+    }
+    expect(tableDefSchema.safeParse(broken).success).toBe(false)
+  })
+})
+
+// docs/impl/phase-9-change-requests.md §7-1。改善要望が「営業フローの提案ステップ」を
+// 指せるようにするための2つ。どちらも **FIELD_TYPES を増やさない** のが要点で、
+// reference() が外部キーを新しい型ではなく references で表しているのと同じ形にしてある。
+describe('definitionRef / createdAt', () => {
+  const changeRequest = table(
+    'change_request',
+    {
+      id: uuid('ID').primaryKey(),
+      targetFlow: definitionRef('flow', '対象の業務フロー'),
+      targetStep: definitionRef('step', '対象のステップ'),
+      filedAt: createdAt('起票日時'),
+    },
+    { label: '改善要望' },
+  )
+
+  it('definitionRef は text で、参照の種類を持つ', () => {
+    expect(changeRequest.fields.targetFlow).toEqual({
+      type: 'text',
+      label: '対象の業務フロー',
+      required: false,
+      primaryKey: false,
+      definitionRef: 'flow',
+    })
+  })
+
+  it('createdAt は datetime・必須で、サーバが埋める印を持つ', () => {
+    expect(changeRequest.fields.filedAt).toEqual({
+      type: 'datetime',
+      label: '起票日時',
+      required: true,
+      primaryKey: false,
+      fill: 'createdAt',
+    })
+  })
+
+  it('定義がスキーマを満たす', () => {
+    expect(tableDefSchema.safeParse(changeRequest).success).toBe(true)
+  })
+
+  it('definitionRef が text 以外に付いていたら弾かれる', () => {
+    const broken = {
+      name: 'x',
+      label: 'X',
+      global: false,
+      fields: {
+        f: {
+          type: 'integer',
+          label: 'F',
+          required: false,
+          primaryKey: false,
+          definitionRef: 'flow',
+        },
+      },
+    }
+    expect(tableDefSchema.safeParse(broken).success).toBe(false)
+  })
+
+  it('fill が datetime 以外に付いていたら弾かれる', () => {
+    const broken = {
+      name: 'x',
+      label: 'X',
+      global: false,
+      fields: {
+        f: { type: 'text', label: 'F', required: true, primaryKey: false, fill: 'createdAt' },
+      },
+    }
+    expect(tableDefSchema.safeParse(broken).success).toBe(false)
+  })
+
+  it('未知の kind は弾かれる', () => {
+    const broken = {
+      name: 'x',
+      label: 'X',
+      global: false,
+      fields: {
+        f: {
+          type: 'text',
+          label: 'F',
+          required: false,
+          primaryKey: false,
+          definitionRef: 'screen',
+        },
+      },
     }
     expect(tableDefSchema.safeParse(broken).success).toBe(false)
   })

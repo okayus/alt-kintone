@@ -141,6 +141,87 @@ export interface Activity extends Meta {
   note: string | null
 }
 
+// ---------------------------------------------------------------------------
+// 改善要望（フェーズ9）
+// ---------------------------------------------------------------------------
+
+export type RequestKind =
+  | 'cannot_record'
+  | 'field_unclear'
+  | 'steps_mismatch'
+  | 'exit_mismatch'
+  | 'ui_friction'
+  | 'new_business'
+  | 'defect'
+  | 'other'
+
+/** 起票時にアプリが添えた状況（論点D）。json 列なので形は FE と seed の合意。 */
+export interface RequestSituation {
+  /** 起票した瞬間に未充足だった出口条件のキー。 */
+  unmetChecks?: string[]
+}
+
+export interface ChangeRequest extends Meta {
+  id: string
+  kind: RequestKind
+  problem: string
+  wish: string | null
+  /** `definitionRef`。値は定義の合成キー（`sales.proposed` など）。 */
+  targetFlow: string | null
+  targetStep: string | null
+  targetCheck: string | null
+  targetField: string | null
+  targetTable: string | null
+  targetRecordId: string | null
+  screenRoute: string | null
+  situation: RequestSituation | null
+  reporterEmployeeId: string
+  assigneeEmployeeId: string | null
+  /** サーバが埋める（`fill: 'createdAt'`）。 */
+  filedAt: string
+  resolution: string | null
+  /** 要望フローの target なので必ず付く。 */
+  _flow: FlowView | null
+}
+
+export interface ChangeRequestMessage extends Meta {
+  id: string
+  requestId: string
+  authorEmployeeId: string
+  body: string
+  postedAt: string
+  authorKind: 'human' | 'ai'
+}
+
+export interface ChangeRequestRead extends Meta {
+  id: string
+  requestId: string
+  employeeId: string
+  readAt: string
+}
+
+/** 起票で送れるフィールド。サーバが埋める `filedAt` は含めない。 */
+export type ChangeRequestInput = Pick<ChangeRequest, 'kind' | 'problem' | 'reporterEmployeeId'> &
+  Partial<
+    Pick<
+      ChangeRequest,
+      | 'wish'
+      | 'targetFlow'
+      | 'targetStep'
+      | 'targetCheck'
+      | 'targetField'
+      | 'targetTable'
+      | 'targetRecordId'
+      | 'screenRoute'
+      | 'situation'
+    >
+  >
+
+/** 対応側が直せるフィールド。 */
+export type ChangeRequestPatch = Partial<
+  Pick<ChangeRequest, 'assigneeEmployeeId' | 'resolution' | 'wish'>
+>
+
 /** 案件の編集で送れるフィールド（`companyId` / `ownerEmployeeId` は対象外）。 */
 export type DealPatch = Partial<
   Pick<

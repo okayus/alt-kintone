@@ -10,15 +10,25 @@
  */
 import { badRequest } from './api.js'
 import { RESERVED_INPUT_KEYS } from './records.js'
-import type { FieldDef, TableDef } from '@alt/dsl'
+import { definitionRefOptions, type DefinitionScope, type FieldDef, type TableDef } from '@alt/dsl'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const YEAR_MONTH = /^\d{4}-\d{2}$/
 
+export interface InputOptions {
+  partial: boolean
+  /**
+   * 定義の全体。`definitionRef` の値を突き合わせるために要る
+   * （docs/impl/phase-9-change-requests.md §7-1）。テーブル定義だけでは足りない
+   * — 指す先がフローやステップで、そのテーブルの外にあるため。
+   */
+  defs: DefinitionScope
+}
+
 export function validateInput(
   table: TableDef,
   body: unknown,
-  opts: { partial: boolean },
+  opts: InputOptions,
 ): Record<string, unknown> {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     throw badRequest('body が JSON オブジェクトではない')
@@ -42,13 +52,21 @@ export function validateInput(
         `候補: ${Object.keys(table.fields).join(', ')}`,
       )
     }
-    values[key] = checkType(table.name, key, field, value)
+    // サーバが埋めるフィールドは黙って捨てない。「送ったのに反映されない」は
+    // 定義に無いフィールドを捨てるのと同じ壊れ方をする
+    if (field.fill !== undefined) {
+      throw badRequest(
+        `${table.name}.${key} はサーバが埋める（fill: ${field.fill}）`,
+        'createdAt は作成時のサーバ時刻が入る。クライアントの時計は使わない',
+      )
+    }
+    values[key] = checkType(table.name, key, field, value, opts.defs)
   }
 
   if (!opts.partial) {
     for (const [name, field] of Object.entries(table.fields)) {
-      // id はサーバが採番するので required でも入力には要らない
-      if (!field.required || field.primaryKey) continue
+      // id はサーバが採番し、fill のフィールドもサーバが埋めるので、required でも入力には要らない
+      if (!field.required || field.primaryKey || field.fill !== undefined) continue
       if (values[name] === undefined || values[name] === null) {
         throw badRequest(`${table.name}.${name} は必須`, '定義で required になっている')
       }
@@ -58,7 +76,13 @@ export function validateInput(
   return values
 }
 
-function checkType(table: string, name: string, field: FieldDef, value: unknown): unknown {
+function checkType(
+  table: string,
+  name: string,
+  field: FieldDef,
+  value: unknown,
+  defs: DefinitionScope,
+): unknown {
   if (value === null) {
     if (field.required) throw badRequest(`${table}.${name} に null は入れられない（必須）`)
     return null
@@ -97,7 +121,18 @@ function checkType(table: string, name: string, field: FieldDef, value: unknown)
     case 'json':
       return value
     case 'uuid':
-    case 'text':
       return typeof value === 'string' ? value : fail('文字列')
+    case 'text': {
+      if (typeof value !== 'string') return fail('文字列')
+      // 定義を指すフィールドは、定義から生えた候補と突き合わせる。
+      // enum と同じ検査だが、候補がテーブル定義ではなく**定義バンドル全体**から来る
+      if (field.definitionRef === undefined) return value
+      const options = definitionRefOptions(defs, field.definitionRef)
+      if (options.some((option) => option.value === value)) return value
+      throw badRequest(
+        `${table}.${name} に "${value}" は入れられない（${field.definitionRef} の指定として解決できない）`,
+        `候補: ${options.map((option) => option.value).join(', ')}`,
+      )
+    }
   }
 }

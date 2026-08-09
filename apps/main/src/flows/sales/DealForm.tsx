@@ -17,7 +17,7 @@
  */
 import { deal as dealDef } from '@alt/definitions'
 import { useState, type ReactNode } from 'react'
-import { fieldLabel } from './labels'
+import { fieldLabel } from '../../shell/labels'
 import type { Deal, DealPatch } from '../../shell/types'
 
 /** 入力中はすべて文字列で持つ。空文字が null を表す。 */

@@ -19,7 +19,7 @@ import {
   type ManualCheckIndex,
 } from './exit-checks.js'
 import { validateInput } from './record-input.js'
-import { toColumnName, type StepDef, type TableDef } from '@alt/dsl'
+import { toColumnName, type DefinitionScope, type StepDef, type TableDef } from '@alt/dsl'
 import {
   closeCurrentRow,
   countRecords,
@@ -264,7 +264,7 @@ function flowView(
  * 「案件は常にちょうど1つのステップにいる」（§3-5）を、作った瞬間から成立させる。
  */
 export function createRecord(deps: Deps, ctx: RequestContext, body: unknown): RecordView {
-  const values = validateInput(ctx.table, body, { partial: false })
+  const values = validateInput(ctx.table, body, { partial: false, defs: definitionScope(deps) })
   const id = randomUUID()
   const isTarget = ctx.flow.target === ctx.table.name
 
@@ -273,7 +273,7 @@ export function createRecord(deps: Deps, ctx: RequestContext, body: unknown): Re
       deps,
       insertRecord({
         table: ctx.table,
-        values: { ...values, id },
+        values: { ...values, ...serverFilled(ctx), id },
         now: ctx.now,
         context: {
           changedBy: ctx.principal.id,
@@ -315,7 +315,7 @@ export function updateRecord(
   body: unknown,
   opts: { changedStep: string | null },
 ): RecordView {
-  const patch = validateInput(ctx.table, body, { partial: true })
+  const patch = validateInput(ctx.table, body, { partial: true, defs: definitionScope(deps) })
   if (Object.keys(patch).length === 0) {
     throw badRequest(
       '更新するフィールドが無い',
@@ -370,6 +370,29 @@ function decodeRow(table: TableDef, row: Row): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * `definitionRef` の解決に使う定義の範囲。**レジストリがそのまま持っている**ので
+ * 組み立て直さない（`flows` は `usage` の元になっているのと同じ値）。
+ */
+function definitionScope(deps: Deps): DefinitionScope {
+  return { tables: deps.registry.tables, flows: deps.registry.flows }
+}
+
+/**
+ * サーバが埋めるフィールド（docs/impl/phase-9-change-requests.md §7-1 (2)）。
+ *
+ * **作成時にだけ入れる。** 更新は現在行の値を引き継ぐ（`updateRecord`）ので、
+ * 追記型のテーブルでも「作られたとき」が動かない。有効期間型の `valid_from` は
+ * 現在バージョンの開始時刻なので、これの代わりにはならない。
+ */
+function serverFilled(ctx: RequestContext): Record<string, unknown> {
+  const values: Record<string, unknown> = {}
+  for (const [name, field] of Object.entries(ctx.table.fields)) {
+    if (field.fill === 'createdAt') values[name] = ctx.now
+  }
+  return values
+}
 
 /**
  * 条件式のコンテキスト変数（docs/condition-ast.md §5-2）。

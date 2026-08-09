@@ -42,6 +42,40 @@ export interface EnumValue {
   label: string
 }
 
+/**
+ * **定義そのもの**への参照の種類（docs/impl/phase-9-change-requests.md §7-1）。
+ *
+ * 外部キー（`references`）が「データの行」を指すのに対して、これは
+ * 「業務フロー」「ステップ」「出口条件」「データ項目」といった**定義の要素**を指す。
+ * 改善要望が「営業フローの提案ステップの出口条件」を対象にできるのは、この型があるため。
+ *
+ * 値は定義の中で一意になる**合成キー**（区切りは `.`）。兄弟フィールドを見ないと
+ * 解決できない形（ステップキーだけを持つ）にしない — サーバもFEも値1つで解ける。
+ *
+ * | kind | 値の例 |
+ * |---|---|
+ * | `table` | `deal` |
+ * | `flow` | `sales` |
+ * | `step` | `sales.proposed` |
+ * | `field` | `deal.expectedCloseMonth` |
+ * | `check` | `sales.proposed.timing_confirmed` |
+ */
+export const DEFINITION_REF_KINDS = ['table', 'flow', 'step', 'field', 'check'] as const
+export type DefinitionRefKind = (typeof DEFINITION_REF_KINDS)[number]
+
+/**
+ * サーバが埋める値。**1値だけ**にしてある。
+ *
+ * 一般的なデフォルト値の機構にしない — 式や関数を持ち込むと
+ * 「定義は最終的にただの JSON」（§4-0）が崩れる。
+ *
+ * `createdAt` が要るのは、有効期間型の `valid_from` が**現在バージョンの**開始時刻で、
+ * 更新のたびに動くため。作成時刻を1クエリで読む手段が他に無い
+ * （docs/impl/phase-9-change-requests.md §7-1 (2)）。
+ */
+export const FIELD_FILLS = ['createdAt'] as const
+export type FieldFill = (typeof FIELD_FILLS)[number]
+
 export interface FieldDef {
   type: FieldType
   /** 表示名。 */
@@ -50,6 +84,10 @@ export interface FieldDef {
   primaryKey: boolean
   /** 外部キーの参照先テーブル名。 */
   references?: string
+  /** 定義そのものへの参照（`type` は `'text'`）。 */
+  definitionRef?: DefinitionRefKind
+  /** サーバが書き込み時に埋める値。入力としては受け付けない。 */
+  fill?: FieldFill
   /** `type: 'enum'` のときの候補。 */
   values?: readonly EnumValue[]
 }
@@ -123,6 +161,41 @@ export function reference(tableName: string, label: string): FieldBuilder {
     required: false,
     primaryKey: false,
     references: tableName,
+  })
+}
+
+/**
+ * 定義そのものを指すフィールド。
+ *
+ * **新しい `FieldType` を作らない**（docs/impl/phase-9-change-requests.md 決定A）。
+ * `reference()` が外部キーを新しい型ではなく `{ type: 'uuid', references }` で
+ * 表しているのと同じ形にする。型で分岐している箇所（DDL の列型・SQL 変換・
+ * 一覧フィルタの `coerce`・セルエディタ）に1つも触らずに済む。
+ */
+export function definitionRef(kind: DefinitionRefKind, label: string): FieldBuilder {
+  return builder({
+    type: 'text',
+    label,
+    required: false,
+    primaryKey: false,
+    definitionRef: kind,
+  })
+}
+
+/**
+ * 作成時刻。**サーバが埋める**ので入力には現れない（`required` だが書き込み側で要求しない）。
+ *
+ * これが無いと、追記型のテーブル（メッセージ）を時系列に並べられず、
+ * 起票時刻のような「作られたとき」を後から読めない（`_version.validFrom` は
+ * 更新のたびに動く）。
+ */
+export function createdAt(label: string): FieldBuilder {
+  return builder({
+    type: 'datetime',
+    label,
+    required: true,
+    primaryKey: false,
+    fill: 'createdAt',
   })
 }
 
@@ -230,11 +303,24 @@ export const fieldDefSchema: z.ZodType<FieldDef> = z
     required: z.boolean(),
     primaryKey: z.boolean(),
     references: z.string().min(1).optional(),
+    definitionRef: z.enum(DEFINITION_REF_KINDS).optional(),
+    fill: z.enum(FIELD_FILLS).optional(),
     values: z.array(enumValueSchema).min(1).readonly().optional(),
   })
   .refine((f) => f.type !== 'enum' || f.values !== undefined, {
     message: 'enum には values が必要',
     path: ['values'],
+  })
+  // 定義への参照は文字列で持つ。`definitionRef('flow', ...)` を通せば自明だが、
+  // JSON を手で書いた（AI が組み立てた）ときに崩れうるので構文層で押さえる
+  .refine((f) => f.definitionRef === undefined || f.type === 'text', {
+    message: 'definitionRef を持つフィールドの type は text',
+    path: ['definitionRef'],
+  })
+  // サーバが埋めるのは時刻だけ。他の型に付くと充填側が何を入れるか決まらない
+  .refine((f) => f.fill !== 'createdAt' || f.type === 'datetime', {
+    message: "fill: 'createdAt' を持つフィールドの type は datetime",
+    path: ['fill'],
   })
   // key の重複はチェック状態の識別キー重複（duplicate-exit-key）と同種の壊れ方をする
   .refine(

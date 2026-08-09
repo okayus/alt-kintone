@@ -97,10 +97,6 @@ textarea {
   color: inherit;
 }
 
-.app-flow {
-  color: var(--muted);
-}
-
 .app-spacer {
   flex: 1;
 }
@@ -939,4 +935,187 @@ tbody tr:last-child td {
 
 .ref-kind {
   color: var(--muted);
+}
+
+/* --- 改善要望（フェーズ9） ---------------------------------------------- */
+
+/* 起票の導線はシェルに常設する（論点D）。どの画面からでも1クリック */
+.app-file-request {
+  padding: 5px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.app-file-request:hover {
+  background: #eef4ff;
+}
+
+/* 業務のナビと「流れを読む」ナビの区切り */
+.app-nav-sep {
+  width: 1px;
+  margin: 8px 8px;
+  background: var(--line);
+}
+
+.badge-unread {
+  margin-left: 6px;
+  background: var(--error);
+  color: #fff;
+}
+
+.request-filters {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+.request-filters label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.request-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.request-table th,
+.request-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.request-table th {
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 件名を持たないので、困りごとの本文が見出しになる（決定F 補） */
+.request-problem {
+  max-width: 520px;
+}
+
+.request-table tr.mine .request-problem a {
+  font-weight: 600;
+}
+
+.primary-link {
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.request-form .field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.request-form textarea,
+.request-form select {
+  width: 100%;
+  max-width: 640px;
+}
+
+.required {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #fdeceb;
+  color: var(--error);
+  font-size: 11px;
+  font-style: normal;
+}
+
+/* 何が送られるかを見せる（論点D）。黙って送らない */
+.request-attached,
+.request-target,
+.request-handling {
+  margin: 18px 0;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.request-attached h3,
+.request-target h3,
+.request-handling h3,
+.request-chat h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.request-head h2 {
+  margin: 4px 0;
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.request-wish {
+  margin: 4px 0;
+}
+
+.request-context {
+  margin-top: 10px;
+}
+
+.request-chat {
+  margin: 18px 0;
+}
+
+.chat-messages {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-messages .message {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.chat-messages .message.mine {
+  background: #eef4ff;
+  border-color: #cddcf7;
+}
+
+.message-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.message-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.chat-form textarea {
+  flex: 1;
+  max-width: 640px;
 }
