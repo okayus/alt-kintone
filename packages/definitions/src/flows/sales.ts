@@ -183,7 +183,7 @@ const OWNED_TABLES = [deal, activity]
  * docs/product-concept.md §8-2 に記録した。
  */
 const outcome = (key: string, name: string, intent: string) =>
-  step({ key, name, intent, role: 'sales_rep', writes: [deal], exit: [], next: [] })
+  step({ key, name, intent, roles: ['sales_rep'], writes: [deal], exit: [], next: [] })
 
 export const sales = flow({
   key: 'sales',
@@ -193,6 +193,11 @@ export const sales = flow({
   // `_flow_state.table_name` に入る値でもある。primary バインド（所有）とは別の軸。
   target: deal,
   initial: 'contacted',
+
+  // 操作はしないが全案件を読む立場。ヨミ会・予測のために見る場所であって、
+  // 直すのは担当者（確定事項「書きは担当者＋管理者」）。これが無いと
+  // マネージャーは案件を1件も読めない（§8-2 論点12 / phase-8 論点A）。
+  viewers: ['sales_manager'],
 
   // intent（この段階で目指すこと）は sales-domain.md §4-5 の原則
   // 「ステージは買い手の状態変化で定義する」を、定義そのものに残す場所。
@@ -204,7 +209,7 @@ export const sales = flow({
       name: '接触',
       intent:
         '買い手が話を聞く気になった状態にする。接触の回数ではなく、次の商談の約束が取れたかで判定する',
-      role: 'sales_rep',
+      roles: ['sales_rep'],
       reads: REFERENCE_TABLES,
       writes: OWNED_TABLES,
       exit: [
@@ -224,7 +229,7 @@ export const sales = flow({
       name: 'ヒアリング',
       intent:
         '買い手が自分の課題を言語化できている状態にする。売り手が資料を作ったかではなく、買い手の状態で判定する',
-      role: 'sales_rep',
+      roles: ['sales_rep'],
       reads: REFERENCE_TABLES,
       writes: OWNED_TABLES,
       exit: [
@@ -254,7 +259,7 @@ export const sales = flow({
       name: '提案',
       intent:
         '買い手が自社案を前提に検討している状態にする。金額・時期・決裁者の3点が揃っているかで判定する',
-      role: 'sales_rep',
+      roles: ['sales_rep'],
       reads: REFERENCE_TABLES,
       writes: OWNED_TABLES,
       exit: [
@@ -300,7 +305,7 @@ export const sales = flow({
       key: 'suspended',
       name: '保留',
       intent: '先方都合の凍結。追跡は続けるが、ヨミ（予測）からは外す',
-      role: 'sales_rep',
+      roles: ['sales_rep'],
       writes: [deal],
       exit: [
         manualCheck(

@@ -7,7 +7,13 @@
  * ちょうど1本に確定させる。
  */
 import { badRequest, notFound, type ApiRequest } from './api.js'
-import { authenticate, requireParticipation, type Authenticate, type Principal } from './authz.js'
+import {
+  authenticate,
+  requireParticipation,
+  type Authenticate,
+  type Participation,
+  type Principal,
+} from './authz.js'
 import type { DefinitionRegistry, TableUsage } from './registry.js'
 import { MAX_LIMIT } from '@alt/sql'
 import type { FlowDef, TableDef } from '@alt/dsl'
@@ -18,6 +24,11 @@ export interface RequestContext {
   table: TableDef
   flow: FlowDef
   usage: TableUsage
+  /**
+   * このフローへの参加の種類（層1 の判定結果）。**入口で1回だけ決めて持ち回る**。
+   * 下の層が同じ判定をやり直すと、条件が食い違ったときに気づけない。
+   */
+  participation: Participation
   /**
    * ユーザーの時点指定（`as_of`）。**過去を見ている ＝ 読み取り専用**。
    * これが立っていると `_permissions.update` が false になり、書き込みも弾かれる。
@@ -70,7 +81,7 @@ export function resolveContext(deps: Deps, request: ApiRequest, tableName: strin
 
   const usage = resolveUsage(usages, request.query['flow'])
   const principal = authenticate(deps.db, request.headers, deps.authenticator)
-  requireParticipation(principal, usage.flow)
+  const participation = requireParticipation(principal, usage.flow)
 
   const asOf = parseAsOf(request.query['as_of'], 'as_of')
   const snapshot = parseSnapshot(request)
@@ -80,6 +91,7 @@ export function resolveContext(deps: Deps, request: ApiRequest, tableName: strin
     table,
     flow: usage.flow,
     usage,
+    participation,
     asOf,
     snapshot,
     // 両方あれば as_of が勝つ。過去のデータは動かないので固定する必要が無い

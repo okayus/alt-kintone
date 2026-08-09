@@ -74,8 +74,17 @@ describe('advance', () => {
     expect(response.status).toBe(400)
   })
 
-  it('担当ロールでなければ 403（ステップ操作の層）', () => {
-    // 鈴木は sales_manager。フローには参加しているが、このステップの担当ではない
+  /**
+   * ⚠ フェーズ8 で**止まる層が変わった**。鈴木（sales_manager）は `viewers` として
+   * フローに参加するようになったので、以前の「参加していない」ではなく
+   * 「閲覧のみだから書けない」（`requireOperator`）で落ちる。
+   *
+   * つまりこのテストは**ステップ操作の層（層3）を通らない**。層3 を突くには
+   * 「フローの担当だが、そのステップの担当ではない」人が要るが、営業フローは
+   * 全ステップが `sales_rep` 単独なので作れない。層3 は `authz.test.ts` の
+   * 「複数の担当ロール（純関数）」で固定してある。
+   */
+  it('閲覧のみの立場は advance できない', () => {
     const response = fixture().request('POST', ADVANCE, { body: { to: 'proposed' }, user: MANAGER })
     expect(response.status).toBe(403)
   })

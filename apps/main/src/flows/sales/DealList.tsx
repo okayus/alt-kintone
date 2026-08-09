@@ -23,7 +23,7 @@
  * `<table>` ではなく div + CSS グリッドなのは、仮想化した行を絶対配置するため。
  * `role="grid"` は最小限だけ付ける（PC中心・社内利用の決定に従う）。
  */
-import { deal as dealDef } from '@alt/definitions'
+import { deal as dealDef, sales } from '@alt/definitions'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   useEffect,
@@ -670,10 +670,19 @@ function Row({
  * （§7 追記3）。認可の判定自体はサーバの `_permissions` で済んでいて、ここは説明だけ。
  */
 function ownedByOther(deal: Deal, screen: ScreenProps): string {
+  const self = [...screen.masters.employees.values()].find(
+    (employee) => employee.email === screen.user,
+  )
+  const me = self?.name ?? screen.user
+
+  // 閲覧のみの立場（フロー定義の viewers）は、担当かどうかに関係なく全行が編集不可。
+  // 「担当が違うから」と説明すると嘘になる（自分が担当の案件でも編集できない）。
+  // ⚠ 可否を決めているのは `_permissions`（サーバ）で、ここは**説明の出し分けだけ**。
+  if (self !== undefined && (sales.viewers ?? []).includes(self.role)) {
+    return `${me} は この業務を見るだけの立場（営業マネージャーなど）。編集できるのは案件の担当者と管理者`
+  }
+
   const owner = screen.masters.employees.get(deal.ownerEmployeeId)?.name ?? '別の担当者'
-  const me =
-    [...screen.masters.employees.values()].find((employee) => employee.email === screen.user)
-      ?.name ?? screen.user
   return `この案件の担当は ${owner}。編集できるのは担当者本人と管理者だけ（いま ${me} として操作している）`
 }
 

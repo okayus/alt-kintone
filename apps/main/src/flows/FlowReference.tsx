@@ -54,6 +54,11 @@ export function FlowReference({ flowKey, currentStep }: FlowReferenceProps) {
       <header className="flow-ref-head">
         <h2>{flow.name}</h2>
         <p className="muted">ゴール: {flow.goal}</p>
+        {(flow.viewers ?? []).length > 0 && (
+          <p className="muted">
+            この業務を見られる人（操作はしない）: {(flow.viewers ?? []).map(roleName).join(' / ')}
+          </p>
+        )}
       </header>
 
       <section className="ref-panel">
@@ -132,7 +137,7 @@ function StepCard({
           {number} {step.name}
         </h3>
         {current && <span className="badge badge-step">いまここ</span>}
-        <span className="ref-role">担当: {roleName(step.role)}</span>
+        <span className="ref-role">担当: {step.roles.map(roleName).join(' / ')}</span>
       </header>
 
       <h4>この段階で目指すこと</h4>

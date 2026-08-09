@@ -10,7 +10,7 @@
  * `parseArgs` を選んだのと同じ理由）。
  */
 import { ApiError, badRequest, notFound, type ApiRequest, type ApiResponse } from './api.js'
-import { requireTableWrite } from './authz.js'
+import { requireOperator, requireTableWrite } from './authz.js'
 import { isHistorical, resolveContext, type Deps, type RequestContext } from './context.js'
 import { advance, currentStepKey, setManualCheck } from './flow-state.js'
 import { parseListSelection } from './list-query.js'
@@ -77,6 +77,9 @@ function route(deps: Deps, request: ApiRequest): ApiResponse {
     }
     if (request.method === 'POST') {
       requireTableWrite(ctx.usage)
+      // ⚠ 新規作成には行レベル認可が効かない（まだ行が無いので rowFilter を評価できない）。
+      // viewer を止められるのはここだけ（docs/impl/phase-8-authz-participation.md §2-2）
+      requireOperator(ctx.participation, 'レコードの作成')
       return { status: 201, body: { record: createRecord(deps, ctx, request.body) } }
     }
     throw methodNotAllowed(request, ['GET', 'POST'])
@@ -89,6 +92,7 @@ function route(deps: Deps, request: ApiRequest): ApiResponse {
     }
     if (request.method === 'PATCH') {
       requireTableWrite(ctx.usage)
+      requireOperator(ctx.participation, 'レコードの更新')
       requireRowWritable(deps, ctx, id)
       // 「どのステップで変わったか」はサーバが _flow_state から引く（§4-1 変更の文脈）
       const changedStep = ctx.flow.target === ctx.table.name ? currentStepKey(deps, ctx, id) : null
@@ -102,6 +106,7 @@ function route(deps: Deps, request: ApiRequest): ApiResponse {
     if (request.method !== 'POST') throw methodNotAllowed(request, ['POST'])
     requireTarget(ctx)
     requireTableWrite(ctx.usage)
+    requireOperator(ctx.participation, 'ステップを進める操作')
     const result = advance(deps, ctx, id, (request.body as Record<string, unknown> | null)?.['to'])
     return ok({ record: result.record, unmet: result.unmet })
   }
@@ -111,6 +116,7 @@ function route(deps: Deps, request: ApiRequest): ApiResponse {
     if (request.method !== 'PUT') throw methodNotAllowed(request, ['PUT'])
     requireTarget(ctx)
     requireTableWrite(ctx.usage)
+    requireOperator(ctx.participation, '手動チェックの更新')
     return ok({ record: setManualCheck(deps, ctx, id, checkKey, request.body) })
   }
 

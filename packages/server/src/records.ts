@@ -209,6 +209,8 @@ function toView(
   view['_permissions'] = permissionsOf({
     principal: ctx.principal,
     usage: ctx.usage,
+    // 閲覧のみの立場（viewers）はここで update / advance が落ちる
+    participation: ctx.participation,
     // rowFilter が無いバインディング（マスタ類）は行レベルの制限なし
     rowWritable: !hasRowFilter || isAdmin(ctx.principal) || row[ROW_WRITABLE_COLUMN] === 1,
     // **`snapshot` では立たない**（決定A）。窓取得で時点を固定しても編集可否は落ちない

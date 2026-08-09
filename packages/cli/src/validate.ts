@@ -241,6 +241,17 @@ function validateReferences(bundle: DefinitionBundle): ValidationError[] {
       errors.push(...validateRowFilter(bundle, flow, binding))
     }
 
+    for (const viewer of flow.viewers ?? []) {
+      if (roleKeys.includes(viewer)) continue
+      errors.push({
+        layer: 'reference',
+        rule: 'unknown-flow-viewer',
+        where: { flow: flow.key, viewer },
+        message: `viewers のロール "${viewer}" が宣言されていない`,
+        hint: `roles.ts に role() で宣言する。宣言済み: ${candidates(roleKeys)}`,
+      })
+    }
+
     for (const step of flow.steps) {
       const at = { flow: flow.key, step: step.key }
 
@@ -260,12 +271,14 @@ function validateReferences(bundle: DefinitionBundle): ValidationError[] {
         }
       }
 
-      if (!roleKeys.includes(step.role)) {
+      // 担当ロールは配列なので、**どれが不正か**を where に載せる（1つに畳まない）
+      for (const roleKey of step.roles) {
+        if (roleKeys.includes(roleKey)) continue
         errors.push({
           layer: 'reference',
           rule: 'unknown-step-role',
-          where: at,
-          message: `担当ロール "${step.role}" が宣言されていない`,
+          where: { ...at, role: roleKey },
+          message: `担当ロール "${roleKey}" が宣言されていない`,
           hint: `roles.ts に role() で宣言する。宣言済み: ${candidates(roleKeys)}`,
         })
       }
@@ -390,8 +403,37 @@ function validateRules(bundle: DefinitionBundle): ValidationError[] {
       })
     }
 
+    // 閲覧のみの立場（viewers）が担当ロールでもあると、どちらが勝つか定義から読めない
+    // （実装は operator が勝つ）。曖昧な定義を書けなくする（phase-8 論点E）
+    const operatorRoles = new Set(flow.steps.flatMap((s) => s.roles))
+    for (const viewer of flow.viewers ?? []) {
+      if (!operatorRoles.has(viewer)) continue
+      const steps = flow.steps.filter((s) => s.roles.includes(viewer)).map((s) => s.key)
+      errors.push({
+        layer: 'rule',
+        rule: 'viewer-also-operates',
+        where: { flow: flow.key, viewer },
+        message: `viewers の "${viewer}" は、ステップ（${steps.join(', ')}）の担当ロールでもある`,
+        hint:
+          'viewers は「操作しないが読む」立場。担当なら読み書きできるので viewers から外す。' +
+          '読ませたいだけなら、そのステップの roles から外す',
+      })
+    }
+
     for (const step of flow.steps) {
       const at = { flow: flow.key, step: step.key }
+
+      if (step.roles.length === 0) {
+        errors.push({
+          layer: 'rule',
+          rule: 'step-without-role',
+          where: at,
+          message: '担当ロールが1つも無い',
+          hint:
+            '担当が居ないステップは管理者しか進められない。roles に担当ロールを書く。' +
+            '全員が操作するステップなら ROLE_KEYS を渡す（列挙するとロール追加時に書き漏れる）',
+        })
+      }
 
       // 論点10 の決着（§8-1 フェーズ2）: next が空なら免除、空でなければ出口条件が要る
       if (step.next.length > 0 && step.exit.length === 0) {

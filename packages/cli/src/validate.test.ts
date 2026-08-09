@@ -64,7 +64,7 @@ const TEMPLATE: DefinitionBundle = {
           key: 'todo',
           name: '未着手',
           intent: '作業を始められる状態にする',
-          role: 'worker',
+          roles: ['worker'],
           reads: [person],
           writes: [task],
           exit: [check('titled', 'タイトルが入っている', 'タイトルを入れると充足する', titled)],
@@ -74,7 +74,7 @@ const TEMPLATE: DefinitionBundle = {
           key: 'done',
           name: '完了',
           intent: '作業が終わった',
-          role: 'worker',
+          roles: ['worker'],
           writes: [task],
           exit: [],
           next: [],
@@ -190,11 +190,35 @@ describe('層2: 参照整合', () => {
     expect(rules(errors)).toContain('unknown-binding-table')
   })
 
-  it('unknown-step-role', () => {
+  it('unknown-step-role — どのロールが不正かを where に載せる', () => {
     const errors = broken((b) => {
-      anyway<{ role: string }>(b.flows[0]?.steps[0]).role = 'ghost'
+      anyway<{ roles: string[] }>(b.flows[0]?.steps[0]).roles = ['worker', 'ghost']
     })
-    expect(rules(errors)).toContain('unknown-step-role')
+    const error = errors.find((e) => e.rule === 'unknown-step-role')
+    expect(error?.where).toMatchObject({ flow: 'work', step: 'todo', role: 'ghost' })
+  })
+
+  it('unknown-flow-viewer', () => {
+    const errors = broken((b) => {
+      anyway<{ viewers: string[] }>(b.flows[0]).viewers = ['ghost']
+    })
+    expect(rules(errors)).toContain('unknown-flow-viewer')
+  })
+
+  it('step-without-role — 担当が居ないステップは管理者しか進められない', () => {
+    const errors = broken((b) => {
+      anyway<{ roles: string[] }>(b.flows[0]?.steps[0]).roles = []
+    })
+    expect(rules(errors)).toContain('step-without-role')
+  })
+
+  it('viewer-also-operates — 担当ロールを viewers に書くと曖昧になる', () => {
+    const errors = broken((b) => {
+      anyway<{ viewers: string[] }>(b.flows[0]).viewers = ['worker']
+    })
+    const error = errors.find((e) => e.rule === 'viewer-also-operates')
+    expect(error?.where).toMatchObject({ flow: 'work', viewer: 'worker' })
+    expect(error?.message).toContain('todo')
   })
 
   it('unknown-next-step — 候補を hint に並べる', () => {

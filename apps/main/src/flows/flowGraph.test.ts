@@ -82,8 +82,8 @@ describe('壊れた定義でも落ちない（validate が拾う前提の防波�
       target: deal,
       initial: 'a',
       steps: [
-        step({ key: 'a', name: 'A', intent: 'i', role: 'r', exit: [], next: ['ghost', 'b'] }),
-        step({ key: 'b', name: 'B', intent: 'i', role: 'r', exit: [], next: [] }),
+        step({ key: 'a', name: 'A', intent: 'i', roles: ['r'], exit: [], next: ['ghost', 'b'] }),
+        step({ key: 'b', name: 'B', intent: 'i', roles: ['r'], exit: [], next: [] }),
       ],
       bindings: [],
     })

@@ -92,16 +92,55 @@ export function authenticate(
 // 層1〜3
 // ---------------------------------------------------------------------------
 
-/** ロールがそのフローのどれかのステップを担当しているか（フロー参加）。 */
-export function participates(principal: Principal, flow: FlowDef): boolean {
-  return isAdmin(principal) || flow.steps.some((step) => step.role === principal.role)
+/**
+ * フローへの参加の種類。**「参加しているか」と「どう参加しているか」を1つの値で返す**
+ * （docs/impl/phase-8-authz-participation.md 決定C）。
+ *
+ *  - admin    … 特別ロール。行レベルも遷移も制限をバイパスする
+ *  - operator … どれかのステップの担当。読み書きする
+ *  - viewer   … `flow.viewers` に居る。**読むだけ**（管理職・監査役）
+ *  - none     … 参加していない。403
+ *
+ * viewer を `access` に落として表現しない（＝ viewer のとき usage.access を read に
+ * 書き換える、はやらない）。access は**そのフローがそのテーブルをどう使うか**であって
+ * 人の偉さではない、という層2 の設計をここで崩さないため。
+ */
+export type Participation = 'admin' | 'operator' | 'viewer' | 'none'
+
+export function participation(principal: Principal, flow: FlowDef): Participation {
+  if (isAdmin(principal)) return 'admin'
+  if (flow.steps.some((step) => step.roles.includes(principal.role))) return 'operator'
+  if (flow.viewers?.includes(principal.role) === true) return 'viewer'
+  return 'none'
 }
 
-export function requireParticipation(principal: Principal, flow: FlowDef): void {
-  if (participates(principal, flow)) return
+/** 参加していなければ 403。参加していれば**種類を返す**ので、呼び出し側が持ち回れる。 */
+export function requireParticipation(principal: Principal, flow: FlowDef): Participation {
+  const kind = participation(principal, flow)
+  if (kind !== 'none') return kind
+  const operators = [...new Set(flow.steps.flatMap((s) => s.roles))].join(', ')
+  const viewers = flow.viewers ?? []
   throw forbidden(
     `ロール "${principal.role}" は業務フロー "${flow.key}" に参加していない`,
-    `このフローを担当するロール: ${[...new Set(flow.steps.map((s) => s.role))].join(', ')}`,
+    `このフローを担当するロール: ${operators}` +
+      (viewers.length > 0 ? ` / 閲覧できるロール: ${viewers.join(', ')}` : ''),
+  )
+}
+
+/**
+ * 書き込みの入口（層2 と並べて置く）。**viewer をここで止める**。
+ *
+ * ⚠ これが無いと `POST /api/{table}`（新規作成）が通る。まだ行が無いので
+ * 行レベル認可を評価できず、`usage.access` はフロー単位の導出値なので viewer も
+ * `writable()` を通ってしまう。他の書き込み経路（PATCH / advance / checks）は
+ * 別の理由でたまたま止まるが、**偶然を頼りにしない**
+ * （docs/impl/phase-8-authz-participation.md §2-2）。
+ */
+export function requireOperator(kind: Participation, operation: string): void {
+  if (kind !== 'viewer') return
+  throw forbidden(
+    `${operation} は閲覧のみの立場ではできない`,
+    'このロールはフロー定義の viewers に居る（読み取り専用）。書けるのは担当ロールと管理者',
   )
 }
 
@@ -123,9 +162,9 @@ export function requireTableWrite(usage: TableUsage): void {
 
 /** ステップ操作（層3）。advance と手動チェックが対象。 */
 export function requireStepRole(principal: Principal, step: StepDef, operation: string): void {
-  if (isAdmin(principal) || principal.role === step.role) return
+  if (isAdmin(principal) || step.roles.includes(principal.role)) return
   throw forbidden(
-    `${operation} はステップ "${step.key}" の担当ロール（${step.role}）の操作`,
+    `${operation} はステップ "${step.key}" の担当ロール（${step.roles.join(', ')}）の操作`,
     `いまのロールは ${principal.role}。担当者か管理者が行う`,
   )
 }
@@ -146,6 +185,8 @@ export function rowFilterOf(principal: Principal, usage: TableUsage) {
 export interface PermissionInput {
   principal: Principal
   usage: TableUsage
+  /** フローへの参加の種類。viewer は書けない。 */
+  participation: Participation
   /** SQL が返した rowFilter の評価結果。rowFilter が無ければ true 相当。 */
   rowWritable: boolean
   /** 過去のバージョンを見ているか。 */
@@ -159,12 +200,16 @@ export interface PermissionInput {
  * 「編集ボタンを出すか」をFE側で再判定させると、認可が2箇所に分かれて必ず乖離する。
  */
 export function permissionsOf(input: PermissionInput): Record<string, boolean> {
-  // 過去のバージョンには書けない（as_of は読み取り専用）
-  const update = writable(input.usage.access) && input.rowWritable && !input.historical
+  // 過去のバージョンには書けない（as_of は読み取り専用）。viewer も書けない
+  const update =
+    input.participation !== 'viewer' &&
+    writable(input.usage.access) &&
+    input.rowWritable &&
+    !input.historical
   const permissions: Record<string, boolean> = { update }
   if (input.step !== undefined) {
     permissions['advance'] =
-      update && (isAdmin(input.principal) || input.principal.role === input.step.role)
+      update && (input.participation === 'admin' || input.step.roles.includes(input.principal.role))
   }
   return permissions
 }

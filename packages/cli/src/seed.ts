@@ -22,6 +22,9 @@ const EMPLOYEES = [
   { id: 'e-yamada', name: '山田 太郎', email: 'yamada@example.com', role: 'sales_rep' },
   { id: 'e-sato', name: '佐藤 花子', email: 'sato@example.com', role: 'sales_rep' },
   { id: 'e-suzuki', name: '鈴木 一郎', email: 'suzuki@example.com', role: 'sales_manager' },
+  // 営業フローの担当ロールでも viewers でもない ＝ 参加していない。
+  // 「フローに参加していないと 403」を画面で確かめられるようにするために居る
+  { id: 'e-mori', name: '森 次郎', email: 'mori@example.com', role: 'production' },
   { id: 'e-admin', name: '管理者', email: 'admin@example.com', role: 'admin' },
 ].map((e) => ({ ...e, team: '第1営業部', status: 'active' }))
 

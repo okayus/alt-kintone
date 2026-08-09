@@ -23,6 +23,8 @@ export const SEEDED_AT = '2026-07-01T00:00:00.000Z'
 export const YAMADA = 'yamada@example.com'
 export const SATO = 'sato@example.com'
 export const MANAGER = 'suzuki@example.com'
+/** 制作担当。営業フローの担当ロールでも viewers でもない ＝ 参加していない。 */
+export const PRODUCTION = 'mori@example.com'
 export const ADMIN = 'admin@example.com'
 
 export interface Fixture {
@@ -79,6 +81,8 @@ const EMPLOYEES = [
   { id: 'e-yamada', name: '山田', email: YAMADA, role: 'sales_rep', status: 'active' },
   { id: 'e-sato', name: '佐藤', email: SATO, role: 'sales_rep', status: 'active' },
   { id: 'e-suzuki', name: '鈴木', email: MANAGER, role: 'sales_manager', status: 'active' },
+  // 営業フローの担当でも viewers でもない人。**参加していない**の検証に要る
+  { id: 'e-mori', name: '森', email: PRODUCTION, role: 'production', status: 'active' },
   { id: 'e-admin', name: '管理', email: ADMIN, role: 'admin', status: 'active' },
 ]
 

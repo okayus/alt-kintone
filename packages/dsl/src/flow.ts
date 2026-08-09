@@ -129,8 +129,15 @@ export interface StepDef {
    * （docs/impl/phase-5-flow-reference.md 決定E）。kintone には原理的に持てない情報。
    */
   intent: string
-  /** 担当ロール。`RoleDef.key` を指す。 */
-  role: string
+  /**
+   * 担当ロール（`RoleDef.key`）。**空にできない** — 空にすると管理者しか
+   * 進められないステップになる（`alt validate` の `step-without-role` で弾く）。
+   *
+   * 配列なのは、**同じ段階を複数のロールが操作する**業務があるため
+   * （docs/impl/phase-8-authz-participation.md 論点B）。全社員が起票する
+   * ようなステップは `ROLE_KEYS` の導出で書く（列挙するとロール追加時に書き漏れる）。
+   */
+  roles: string[]
   /** 読むテーブル名。 */
   reads: string[]
   /** 書くテーブル名。 */
@@ -147,7 +154,7 @@ export interface StepSpec {
   key: string
   name: string
   intent: string
-  role: string
+  roles: string[]
   reads?: TableDef[]
   writes?: TableDef[]
   exit: ExitCondition[]
@@ -159,7 +166,7 @@ export function step(spec: StepSpec): StepDef {
     key: spec.key,
     name: spec.name,
     intent: spec.intent,
-    role: spec.role,
+    roles: spec.roles,
     reads: (spec.reads ?? []).map((t) => t.name),
     writes: (spec.writes ?? []).map((t) => t.name),
     exit: spec.exit,
@@ -191,6 +198,17 @@ export interface FlowDef {
   initial: string
   steps: StepDef[]
   bindings: BindingDef[]
+  /**
+   * 操作はしないが読む立場（管理職・監査役）。**読み取り専用でフローに参加する。**
+   *
+   * これが無いと「フロー参加」の唯一の根拠が「どれかのステップの担当であること」に
+   * なり、営業マネージャーのように**見るだけの人が1件も読めない**
+   * （docs/impl/phase-8-authz-participation.md 論点A）。
+   *
+   * ステップの担当ロールと重複して書かない（`viewer-also-operates` で弾く）。
+   * 管理者は書かなくてよい（`isAdmin` がバイパスする）。
+   */
+  viewers?: string[]
 }
 
 export interface FlowSpec {
@@ -201,10 +219,11 @@ export interface FlowSpec {
   initial: string
   steps: StepDef[]
   bindings: BindingDef[]
+  viewers?: string[]
 }
 
 export function flow(spec: FlowSpec): FlowDef {
-  return {
+  const def: FlowDef = {
     key: spec.key,
     name: spec.name,
     goal: spec.goal,
@@ -213,6 +232,9 @@ export function flow(spec: FlowSpec): FlowDef {
     steps: spec.steps,
     bindings: spec.bindings,
   }
+  // 未指定のときはキーごと持たない（`bind()` と同じ。JSON にした形をそのまま契約にするため）
+  if (spec.viewers !== undefined) def.viewers = spec.viewers
+  return def
 }
 
 // ---------------------------------------------------------------------------
@@ -306,7 +328,9 @@ export const stepDefSchema: z.ZodType<StepDef> = z.object({
   key,
   name: z.string().min(1),
   intent: z.string().min(1),
-  role: key,
+  // 空配列は構文としては通す。「誰も操作できないステップ」は業務ルール層で
+  // `step-without-role` として弾く（どの層で何を言うかの切り分けは §5-4 の3層）。
+  roles: z.array(key),
   reads: z.array(key),
   writes: z.array(key),
   exit: z.array(exitConditionSchema),
@@ -322,6 +346,7 @@ export const flowDefSchema: z.ZodType<FlowDef> = z
     initial: key,
     steps: z.array(stepDefSchema).min(1),
     bindings: z.array(bindingDefSchema),
+    viewers: z.array(key).optional(),
   })
   // ステップキーの一意性と initial の実在は、参照整合ではなく定義そのものの
   // 内部整合。フロー1本を見れば判定できるので、ここ（構文層）で弾く。
