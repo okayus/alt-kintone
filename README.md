@@ -5,10 +5,14 @@ kintone が構造的に解けなかった問題を「アプリを作るのは人
 
 構想と設計判断は [`docs/product-concept.md`](docs/product-concept.md) を参照。
 
+**新しいマシンで動かすなら [`docs/local-setup.md`](docs/local-setup.md)。**
+クローン直後は `data/` が空なので、定義 JSON とデータを用意しないと画面に何も出ない。
+
 ## ドキュメント
 
 | ファイル | 内容 |
 |---|---|
+| [docs/local-setup.md](docs/local-setup.md) | **別のマシンで動かす**。定義 JSON とテストデータの用意、つまずくところ |
 | [docs/product-concept.md](docs/product-concept.md) | **プロダクト構想**。何を作るか、確定した設計判断、未確定の論点 |
 | [docs/condition-ast.md](docs/condition-ast.md) | **条件式AST仕様**。TS と Go の契約 |
 | [docs/domain-model.md](docs/domain-model.md) | ドメインモデル v2（テーブル・業務フロー3本・ロール） |
@@ -108,6 +112,7 @@ docker compose exec dev pnpm alt validate          # 3層（構文 / 参照整�
 docker compose exec dev pnpm alt apply --recreate  # SQLite にスキーマを作る
 docker compose exec dev pnpm alt export --out data/definitions.json  # サーバーが読む形で書き出す
 docker compose exec dev pnpm alt seed --reset      # 開発用のデモデータを入れる
+docker compose exec -T dev pnpm --silent alt dump > sql/testdata.sql  # スキーマ+データを SQL 1本に
 ```
 
 全コマンドに `--json`（AIが構造化して読めるように）。終了コードは 0 成功 / 1 検証エラー・適用失敗 /
@@ -115,6 +120,10 @@ docker compose exec dev pnpm alt seed --reset      # 開発用のデモデータ
 
 `alt seed` は開発用の裏口。`company` / `contact` / `employee` は営業フローの reference バインド
 （読むだけ）なので**書き込み API が生えず**、API 経由では入れられない。
+
+`alt dump` は `apply` + `seed` と同じ状態を SQL 1本にする（`sqlite3 data/alt.db < sql/testdata.sql`
+で流せる）。**DB は触らない**。生成物 `sql/testdata.sql` はコミットしてあり、定義とずれると
+`pnpm verify` が落ちる。詳しくは [docs/local-setup.md](docs/local-setup.md)。
 
 ### API サーバー
 

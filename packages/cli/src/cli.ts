@@ -10,6 +10,7 @@
 import { apply, openDatabase, resolveDbPath } from './apply.js'
 import { loadBundle } from './bundle.js'
 import { attachProposal, computeDiff, formatDiff, loadApplied } from './diff.js'
+import { dump } from './dump.js'
 import { seed } from './seed.js'
 import { validate, type ValidationError } from './validate.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -52,6 +53,11 @@ const USAGE = `alt — alt-kintone の定義を検証し、適用する
       --deals <N> で N 件のダミー案件を追加する（一覧の性能検証用。乱数は固定シード）
       ※ マスタ（company / contact / employee）は API から作れないための裏口
 
+  alt dump [--out <path>] [--deals <N>] [--json]
+      スキーマ + テストデータを1本の SQL にする（DB は作らない）
+      中身は apply + seed と同一。別のマシンで sqlite3 に流すため（docs/local-setup.md）
+      --out を付けるとファイルに書く。省略すると標準出力
+
 終了コード: 0 成功 / 1 検証エラー・適用失敗 / 2 使い方の誤り`
 
 /** 使い方の誤り。終了コード 2 になる。 */
@@ -71,6 +77,8 @@ export function run(argv: readonly string[], io: Io = consoleIo): number {
         return runDiff(rest, io)
       case 'seed':
         return runSeed(rest, io)
+      case 'dump':
+        return runDump(rest, io)
       case '--help':
       case '-h':
         io.out(USAGE)
@@ -231,6 +239,49 @@ function runSeed(args: readonly string[], io: Io): number {
     }
   } finally {
     db.close()
+  }
+  return 0
+}
+
+/**
+ * スキーマ + テストデータの SQL。
+ *
+ * ⚠ **DB を開かない。** 出力を作るのが目的で、ここで `data/alt.db` を触ると
+ * 「SQL を見たかっただけなのに手元のデータが消えた」が起きる。
+ */
+function runDump(args: readonly string[], io: Io): number {
+  const opts = options(args, {
+    json: { type: 'boolean' },
+    out: { type: 'string' },
+    deals: { type: 'string' },
+  })
+
+  const deals = parseCount(opts['deals'], 'deals')
+  const bundle = loadBundle()
+  // 検証を通らない定義からデータを作らない（apply と同じ扱い）
+  const errors = validate(bundle)
+  if (errors.length > 0) {
+    report(errors, opts['json'] === true, io)
+    return 1
+  }
+
+  const result = dump(bundle, { deals })
+  const out = opts['out']
+
+  if (typeof out !== 'string') {
+    // SQL そのものが出力なので --json は「書き出した結果の要約」には使わない
+    io.out(result.sql.trimEnd())
+    return 0
+  }
+
+  mkdirSync(dirname(out), { recursive: true })
+  writeFileSync(out, result.sql)
+  const total = Object.values(result.rows).reduce((sum, count) => sum + count, 0)
+  if (opts['json'] === true) {
+    io.out(JSON.stringify({ ok: true, out, ...result, sql: undefined }, null, 2))
+  } else {
+    io.out(`＋ DDL ${result.statements} 本 / データ ${total} 行`)
+    io.out(`✔ ${out} に書き出した（sqlite3 <db> < ${out} で流せる）`)
   }
   return 0
 }

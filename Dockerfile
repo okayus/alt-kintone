@@ -16,6 +16,12 @@ RUN corepack enable
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+# sqlite3 CLI。`alt dump` が書き出した SQL を流す口（docs/local-setup.md）と、
+# DB の中身を覗く手段。無いと「使い捨てスクリプトを書いて実行する」しか無くなる。
+# アプリ本体は better-sqlite3 で繋ぐので、これは開発の道具でしかない。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sqlite3 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 # vitest browser mode（apps/main のコンポーネントテスト）が使う実 Chromium。
 # playwright にダウンロードさせず apt 版を executablePath で指す
 # （apps/main/vite.config.ts）— playwright のバージョンとブラウザ実体の版結合を
