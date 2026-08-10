@@ -227,7 +227,6 @@ export function DealList(screen: ScreenProps) {
     sort: query.sort,
     asOf: screen.asOf,
     user: screen.user,
-    onError: screen.onError,
   })
 
   return (

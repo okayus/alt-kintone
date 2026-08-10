@@ -13,8 +13,9 @@
  *
  * ⚠ 更新はポーリング（論点H）。SSE も WebSocket も、いま入れる理由が無い。
  */
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { MASTER_LIMIT, type Client } from './api'
+import { keyOf } from './query'
 import type { ChangeRequest, ChangeRequestMessage, ChangeRequestRead } from './types'
 
 /** ポーリング間隔。社内・低トラフィックなので、これで十分早い。 */
@@ -29,37 +30,28 @@ export interface UnreadBadgeProps {
 }
 
 export function UnreadBadge({ client, user, meId }: UnreadBadgeProps) {
-  const [count, setCount] = useState(0)
+  const unread = useQuery({
+    /**
+     * ⚠ **前の数を残さない。** ユーザーを切り替えたときに古い件数が出たままになると、
+     *   「他人の未読が自分のバッジに出ている」という、いちばん信用を失う壊れ方をする
+     *   （実際にフェーズ9 の動作確認で、山田 → 森 の切替後に山田の件数が残った）。
+     *   **利用者がキーに入っている**ので、切り替えた瞬間に別のクエリになり、
+     *   数え直しを待たずに `data` が undefined へ戻る（フェーズ12 論点C）。
+     *   だから **`placeholderData` を絶対に付けない** — 付けた瞬間に決定N が死ぬ。
+     */
+    queryKey: keyOf(client, 'unread', { user, asOf: undefined }, meId),
+    queryFn: () => countUnread(client, meId),
+    // マスタが未取得のうちは自分が誰か分からない。数えない
+    enabled: meId !== '',
+    refetchInterval: UNREAD_POLL_MS,
+    // 数えられないことは業務の失敗ではないので赤帯は出さない。
+    // 本体（要望画面）を開けばそちらがちゃんとエラーを出す
+    meta: { silent: true },
+  })
 
-  useEffect(() => {
-    // ⚠ **前の数を残さない。** ユーザーを切り替えたときに古い件数が出たままになると、
-    //    「他人の未読が自分のバッジに出ている」という、いちばん信用を失う壊れ方をする
-    //    （実際にフェーズ9 の動作確認で、山田 → 森 の切替後に山田の件数が残った）。
-    //    数え直せていない間は「分からない」＝ 出さない、を不変条件にする
-    setCount(0)
-    if (meId === '') return undefined
-    let live = true
-
-    const poll = (): void => {
-      void countUnread(client, meId)
-        .then((next) => {
-          if (live) setCount(next)
-        })
-        // 数えられないことは業務の失敗ではないので赤帯は出さない。ただし
-        // **古い数を残さない** — 検証できない数字を出すくらいなら消す。
-        // 本体（要望画面）を開けばそちらがちゃんとエラーを出す
-        .catch(() => {
-          if (live) setCount(0)
-        })
-    }
-
-    poll()
-    const timer = window.setInterval(poll, UNREAD_POLL_MS)
-    return () => {
-      live = false
-      window.clearInterval(timer)
-    }
-  }, [client, user, meId])
+  // 失敗したら**古い数を残さない** — 検証できない数字を出すくらいなら消す。
+  // （ライブラリは失敗しても最後に成功した値を持ち続けるので、ここで明示的に落とす）
+  const count = unread.isError ? 0 : (unread.data ?? 0)
 
   if (count === 0) return null
   return (

@@ -10,8 +10,10 @@
  * （§4-1）。再判定すると認可が2箇所に分かれて必ず乖離する。
  */
 import { activity as activityDef, deal as dealDef, sales } from '@alt/definitions'
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DealChat } from './DealChat'
+import { keyOf } from '../../shell/query'
 import { DealForm } from './DealForm'
 import { fieldLabel, label } from '../../shell/labels'
 import { exitLabel, stepName } from './steps'
@@ -32,34 +34,39 @@ export function DealDetail({
   onError,
   id,
 }: ScreenProps & { id: string }) {
-  const [deal, setDeal] = useState<Deal | undefined>(undefined)
-  const [activities, setActivities] = useState<Activity[]>([])
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
+  const queries = useQueryClient()
+  const at = { user, asOf }
+  const dealKey = keyOf(client, 'deal', at, id)
+
+  const dealQuery = useQuery({
+    queryKey: dealKey,
+    queryFn: () => client.get<Deal>('deal', id, { asOf }),
+  })
+
+  const activityQuery = useQuery({
+    // 案件で絞るクエリは API に無い（フェーズ3の「作らないもの」）。件数が少ないのでFEで絞る。
+    // 投げるパラメータに案件が入らない ＝ **キーにも入らない**ので、
+    // 別の案件を開いても同じ取得が使い回される（フェーズ12 論点E）
+    queryKey: keyOf(client, 'activity', at),
+    queryFn: () => client.list<Activity>('activity', { asOf }),
+  })
+
+  const deal = dealQuery.data
+  const activities = useMemo(
+    () => (activityQuery.data ?? []).filter((activity) => activity.dealId === id),
+    [activityQuery.data, id],
+  )
+
+  // 別の案件へ移ったときに、前の案件の画面の状態を持ち越さない。
+  // **取得ではなく画面の状態**（同じコンポーネントが再利用されるので明示的に戻す）
   useEffect(() => {
-    let live = true
-    setDeal(undefined)
     setEditing(false)
     setNotice(null)
-    Promise.all([
-      client.get<Deal>('deal', id, { asOf }),
-      // 案件で絞るクエリは API に無い（フェーズ3の「作らないもの」）。件数が少ないのでFEで絞る
-      client.list<Activity>('activity', { asOf }),
-    ])
-      .then(([record, all]) => {
-        if (!live) return
-        setDeal(record)
-        setActivities(all.filter((activity) => activity.dealId === id))
-      })
-      .catch((cause: unknown) => {
-        if (live) onError(cause)
-      })
-    return () => {
-      live = false
-    }
-  }, [client, id, asOf, user, onError])
+  }, [id, asOf, user])
 
   const nameOf = useCallback(
     (employeeId: string | null | undefined): string =>
@@ -75,7 +82,8 @@ export function DealDetail({
     setNotice(null)
     run()
       .then((next) => {
-        setDeal(next)
+        // 取り直しを待たずにその場を置き換える（今日の setDeal と同型）
+        queries.setQueryData(dealKey, next)
         after?.(next)
       })
       .catch(onError)
@@ -199,6 +207,7 @@ export function DealDetail({
           client={client}
           dealId={deal.id}
           meId={meId}
+          user={user}
           nameOf={nameOf}
           asOf={asOf}
           onError={onError}

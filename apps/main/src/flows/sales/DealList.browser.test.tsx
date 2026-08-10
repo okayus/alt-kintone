@@ -13,6 +13,7 @@
  * （`isComposing` / `keyCode 229`）を持つ合成イベントで代替し、対照として
  * 実 Enter が確定することを同じテストで確認する。
  */
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { NuqsAdapter } from 'nuqs/adapters/react'
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -20,6 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { DealList } from './DealList'
 import type { Client, ListResponse, QueryOptions } from '../../shell/api'
+import { createQueryClient } from '../../shell/query'
 import type { Company, Deal, Employee } from '../../shell/types'
 import '../../shell/app.css'
 
@@ -70,6 +72,7 @@ interface PatchLog {
  */
 function stubClient(deals: Deal[], patches: PatchLog[]): Client {
   return {
+    flow: 'sales',
     async list<T>(): Promise<T[]> {
       return []
     },
@@ -114,6 +117,7 @@ function stubClient(deals: Deal[], patches: PatchLog[]): Client {
 
 let root: Root | undefined
 let mounted: HTMLElement[] = []
+let queries: QueryClient | undefined
 
 interface Harness {
   /** グリッドの外を表すクリック先（決定Rの再現に使う）。 */
@@ -130,21 +134,26 @@ function renderList(client: Client): Harness {
   mounted = [outside, host]
 
   root = createRoot(host)
+  // 取得の失敗も `errors` に集める（フェーズ12 で fetch のエラーは
+  // 画面の `onError` ではなく QueryCache 共通の受け皿を通るようになった）
+  queries = createQueryClient((cause) => errors.push(cause))
   root.render(
     <StrictMode>
-      <NuqsAdapter>
-        <DealList
-          client={client}
-          masters={{
-            companies: new Map<string, Company>(),
-            employees: new Map<string, Employee>(),
-          }}
-          asOf={undefined}
-          user="yamada@example.com"
-          meId="e-yamada"
-          onError={(cause) => errors.push(cause)}
-        />
-      </NuqsAdapter>
+      <QueryClientProvider client={queries}>
+        <NuqsAdapter>
+          <DealList
+            client={client}
+            masters={{
+              companies: new Map<string, Company>(),
+              employees: new Map<string, Employee>(),
+            }}
+            asOf={undefined}
+            user="yamada@example.com"
+            meId="e-yamada"
+            onError={(cause) => errors.push(cause)}
+          />
+        </NuqsAdapter>
+      </QueryClientProvider>
     </StrictMode>,
   )
   return { outside, errors }
@@ -153,6 +162,8 @@ function renderList(client: Client): Harness {
 afterEach(() => {
   root?.unmount()
   root = undefined
+  queries?.clear()
+  queries = undefined
   for (const node of mounted) node.remove()
   mounted = []
   // nuqs が location.search を触った場合に、次のテストへ漏らさない

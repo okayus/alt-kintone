@@ -97,6 +97,13 @@ export interface AdvanceResponse<T> {
 }
 
 export interface Client {
+  /**
+   * このクライアントが属する業務フロー。**取得のキーの先頭になる**
+   * （フェーズ12 論点C）。`flow` は認可の範囲を決める値なので、キーを組む側に
+   * 文字列で渡させると「`request` のクライアントで `sales` のキー」が書けてしまう。
+   * クライアント自身に持たせて、そこから読ませる。
+   */
+  readonly flow: string
   list<T>(table: string, opts?: QueryOptions): Promise<T[]>
   /** 一覧を窓で引く。総件数と時点が要るので、レスポンスをそのまま返す。 */
   listPage<T>(table: string, opts?: QueryOptions): Promise<ListResponse<T>>
@@ -135,6 +142,7 @@ export function createClient(auth: AuthHeaders, flow = 'sales'): Client {
   // 型注釈を省くと、ジェネリックなメソッドの引数が Client の宣言から
   // 文脈型を受け取れず implicit any になる。ここは明示する。
   return {
+    flow,
     async list<T>(table: string, opts?: QueryOptions): Promise<T[]> {
       return (await request<ListResponse<T>>('GET', table, opts)).records
     },

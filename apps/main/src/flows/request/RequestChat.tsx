@@ -15,9 +15,10 @@
  *
  * ⚠ 更新はポーリング（論点H）。開いている間だけ動かす。
  */
-import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MASTER_LIMIT, type Client } from '../../shell/api'
 import { ChatPanel } from '../../shell/chat/ChatPanel'
+import { keyOf } from '../../shell/query'
 import type { ChangeRequestMessage } from '../../shell/types'
 
 /** 開いている間の更新間隔。社内・要望は日に数件なので、これで十分（論点H）。 */
@@ -27,6 +28,8 @@ export interface RequestChatProps {
   client: Client
   requestId: string
   meId: string
+  /** 詐称中のユーザー。取得のキーに入る（フェーズ12 論点C）。 */
+  user: string
   nameOf: (employeeId: string | null | undefined) => string
   /** 過去表示中は書けない（フェーズ11 論点J）。 */
   asOf: string | undefined
@@ -39,37 +42,27 @@ export function RequestChat({
   client,
   requestId,
   meId,
+  user,
   nameOf,
   asOf,
   onError,
   onPosted,
 }: RequestChatProps) {
-  const [messages, setMessages] = useState<ChangeRequestMessage[] | undefined>(undefined)
+  const queries = useQueryClient()
+  const key = keyOf(client, 'change_request_message', { user, asOf }, requestId)
 
-  useEffect(() => {
-    let live = true
-    const load = (): void => {
-      client
-        .list<ChangeRequestMessage>('change_request_message', {
-          limit: MASTER_LIMIT,
-          filters: { requestId },
-          sort: 'postedAt:asc',
-          ...(asOf === undefined ? {} : { asOf }),
-        })
-        .then((records) => {
-          if (live) setMessages(records)
-        })
-        .catch((cause: unknown) => {
-          if (live) onError(cause)
-        })
-    }
-    load()
-    const timer = window.setInterval(load, CHAT_POLL_MS)
-    return () => {
-      live = false
-      window.clearInterval(timer)
-    }
-  }, [client, requestId, asOf, onError])
+  const messages = useQuery({
+    queryKey: key,
+    queryFn: () =>
+      client.list<ChangeRequestMessage>('change_request_message', {
+        limit: MASTER_LIMIT,
+        filters: { requestId },
+        sort: 'postedAt:asc',
+        ...(asOf === undefined ? {} : { asOf }),
+      }),
+    // 開いている間だけ動く（画面を離れればクエリが非アクティブになって止まる）
+    refetchInterval: CHAT_POLL_MS,
+  })
 
   const post = async (body: string): Promise<void> => {
     try {
@@ -80,7 +73,8 @@ export function RequestChat({
         // 場所だけ空けてある（論点K）。AI を当事者に入れるのは v1 ではやらない
         authorKind: 'human',
       })
-      setMessages((prev) => [...(prev ?? []), created])
+      // 次のポーリングを待たずに自分の書き込みを出す（今日の setMessages と同型）
+      queries.setQueryData<ChangeRequestMessage[]>(key, (prev) => [...(prev ?? []), created])
       onPosted()
     } catch (cause) {
       onError(cause)
@@ -92,7 +86,7 @@ export function RequestChat({
   return (
     <ChatPanel
       title="やりとり"
-      messages={messages}
+      messages={messages.data}
       meId={meId}
       nameOf={nameOf}
       onPost={post}

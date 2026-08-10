@@ -12,45 +12,35 @@
  * 絞り込みは URL に載せる（フェーズ6 論点D）。「未対応の障害だけ」をそのまま渡せる。
  */
 import { changeRequest as requestDef, request as requestFlow } from '@alt/definitions'
+import { useQuery } from '@tanstack/react-query'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useEffect, useState } from 'react'
 import type { ScreenProps } from '../../shell/App'
 import { dateTime } from '../../shell/format'
 import { label } from '../../shell/labels'
+import { keyOf } from '../../shell/query'
 import { href } from '../../shell/router'
 import type { ChangeRequest } from '../../shell/types'
 
-export function RequestList({ client, masters, asOf, user, meId, onError }: ScreenProps) {
+export function RequestList({ client, masters, asOf, user, meId }: ScreenProps) {
   const [kind, setKind] = useQueryState('kind', parseAsString.withDefault(''))
   const [step, setStep] = useQueryState('step', parseAsString.withDefault(''))
   const [mine, setMine] = useQueryState('mine', parseAsString.withDefault(''))
-  const [requests, setRequests] = useState<ChangeRequest[] | undefined>(undefined)
 
-  useEffect(() => {
-    let live = true
-    setRequests(undefined)
-    client
-      .list<ChangeRequest>('change_request', {
-        asOf,
-        // フィルタは**フィールド毎のパラメータ**。FE は条件式 AST を組み立てない（決定2）。
-        // `me` はサーバ側の糖衣で、URL を共有すると「読み手にとっての自分」になる
-        filters: {
-          ...(kind === '' ? {} : { kind }),
-          ...(step === '' ? {} : { step }),
-          ...(mine === '' ? {} : { reporterEmployeeId: 'me' }),
-        },
-        sort: 'filedAt:desc',
-      })
-      .then((records) => {
-        if (live) setRequests(records)
-      })
-      .catch((cause: unknown) => {
-        if (live) onError(cause)
-      })
-    return () => {
-      live = false
-    }
-  }, [client, asOf, user, kind, step, mine, onError])
+  // フィルタは**フィールド毎のパラメータ**。FE は条件式 AST を組み立てない（決定2）。
+  // `me` はサーバ側の糖衣で、URL を共有すると「読み手にとっての自分」になる
+  const filters = {
+    ...(kind === '' ? {} : { kind }),
+    ...(step === '' ? {} : { step }),
+    ...(mine === '' ? {} : { reporterEmployeeId: 'me' }),
+  }
+
+  // 絞り込みがキーの一部 ＝ 変えれば別の取得（フェーズ12 論点C）
+  const query = useQuery({
+    queryKey: keyOf(client, 'change_request', { user, asOf }, filters),
+    queryFn: () =>
+      client.list<ChangeRequest>('change_request', { asOf, filters, sort: 'filedAt:desc' }),
+  })
+  const requests = query.data
 
   const nameOf = (id: string | null): string =>
     id === null ? '—' : (masters.employees.get(id)?.name ?? id)

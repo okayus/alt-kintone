@@ -1,6 +1,6 @@
 /**
  * 一覧の窓取得。docs/impl/phase-6-list-grid.md 論点B /
- * docs/impl/phase-7-list-grid-edit.md 決定K
+ * docs/impl/phase-7-list-grid-edit.md 決定K / docs/impl/phase-12-data-fetching.md 論点D
  *
  * **描画の仮想化（DOM）と取得の窓化（通信）は別の仕組み**で、「いま何行目が見えているか」
  * でだけ繋がる（フェーズ6 §2-1）。ここは後者だけを持つ。前者は `DealList.tsx` の virtualizer。
@@ -18,9 +18,24 @@
  * どちらも、世代の中の窓取得はすべて同じ `snapshot` で引くので、取得の合間に誰かが
  * 更新しても**行の重複・欠落が起きない**（フェーズ6 §2-2、決定A）。
  * `snapshot` はサーバが返した `now` をそのまま使う。クライアントの時計は信用しない。
+ *
+ * ## 取得は宣言（フェーズ12）
+ *
+ * 「どの窓が要るか」を宣言すると、取得の重複排除・遅れて返った応答の扱いはライブラリが持つ
+ * （`let live` と `requested` Set が消えた）。**2つの世代はキーの設計として残る** —
+ * ハード = キーの前半、ソフト = キーに載せたカウンタ。
+ *
+ * ⚠ **行の蓄積（`rows`）だけは手書きが残る**（フェーズ12 レビュー③）。理由は2つあり、
+ *   どちらもライブラリが持てない:
+ *   1. ソフト世代をまたいで**前の時点の行を出し続ける**（キャッシュはキー単位なので、
+ *      `snapshot` が変わった瞬間に全部「未取得」に戻ってしまう ＝ 一覧が白くなる）
+ *   2. **スクロールで通り過ぎた窓**を出し続ける（宣言を見えている範囲に絞ると、
+ *      overscan が範囲外を描いた瞬間にスケルトンへ戻る）
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Client } from '../../shell/api'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import { useCallback, useReducer, useRef, useState } from 'react'
+import type { Client, ListResponse } from '../../shell/api'
+import { keyOf } from '../../shell/query'
 import type { Deal } from '../../shell/types'
 
 /** 1回の取得で引く行数。サーバの上限は 500。 */
@@ -35,7 +50,6 @@ export interface DealPageInput {
   asOf: string | undefined
   /** 詐称中のユーザー。変われば `_permissions` も rowFilter も変わるので取り直す。 */
   user: string
-  onError: (error: unknown) => void
 }
 
 export interface DealPage {
@@ -57,142 +71,177 @@ export interface DealPage {
   refresh(): void
 }
 
-const NO_ROWS: ReadonlyMap<number, Deal> = new Map()
+/** いま何を取りに行っているか。ハード世代が変わったら丸ごと捨てる。 */
+interface Generation {
+  /** ハード世代の識別子。 */
+  key: string
+  /** ソフト世代。`refresh()` のたびに増える ＝ 窓のキーが全部変わる。 */
+  soft: number
+  /** この世代の起点ページ。ハードは先頭、ソフトは**最後に見ていた位置**。 */
+  head: number
+  /**
+   * 宣言している窓。**この世代の間は減らさない** — 減らすと、通り過ぎた窓の行が
+   * キャッシュから外れて蓄積の意味が薄れる（ソフト世代では起点だけに戻す）。
+   */
+  pages: readonly number[]
+}
+
+function firstGeneration(key: string): Generation {
+  return { key, soft: 0, head: 0, pages: [0] }
+}
 
 export function useDealPage(input: DealPageInput): DealPage {
-  const { client, filters, sort, asOf, user, onError } = input
+  const { client, filters, sort, asOf, user } = input
 
-  const [total, setTotal] = useState<number | undefined>(undefined)
-  const [snapshot, setSnapshot] = useState<string | undefined>(undefined)
-  const [rows, setRows] = useState<ReadonlyMap<number, Deal>>(NO_ROWS)
+  // 依存の同一性が毎レンダー変わる（オブジェクト）ので、
+  // 「ハード世代が変わったか」は文字列に畳んでから判定する
+  const key = JSON.stringify([filters, sort ?? '', asOf ?? '', user])
 
-  /** 世代の識別子。古い世代のレスポンスを捨てるために見る。 */
-  const token = useRef(0)
-  /** 取得を投げた窓の番号。二重取得を防ぐ。 */
-  const requested = useRef(new Set<number>())
+  const [stored, setStored] = useState<Generation>(() => firstGeneration(key))
+  // ハード世代が変わったフレームで**古い宣言のまま取りに行かない**ように、
+  // 保存された世代ではなく「いまのキーに対する世代」を使う（effect で戻すと1フレーム遅れ、
+  // その1フレームで前の絞り込みの窓を丸ごと取りに行ってしまう）
+  const generation = stored.key === key ? stored : firstGeneration(key)
+
+  const update = useCallback(
+    (change: (base: Generation) => Generation) => {
+      setStored((previous) => change(previous.key === key ? previous : firstGeneration(key)))
+    },
+    [key],
+  )
+
   /** 最後に見えていた範囲。ソフト世代の起点ページを決めるのに使う。 */
   const lastRange = useRef({ start: 0, end: 0 })
 
-  // 依存の同一性が毎レンダー変わる（オブジェクト・関数）ので、
-  // 「世代を進めるべきか」は文字列に畳んでから判定する
-  const key = JSON.stringify([filters, sort ?? '', asOf ?? '', user])
-
-  // 取得の中で読む最新の値。effect の依存には入れない
-  const latest = useRef({ client, filters, sort, asOf, onError })
-  latest.current = { client, filters, sort, asOf, onError }
-
-  const fetchPage = useCallback((page: number, pinned: string | undefined) => {
-    const { client: c, filters: f, sort: s, asOf: a, onError: fail } = latest.current
-    const mine = token.current
-    return c
-      .listPage<Deal>('deal', {
-        filters: f,
-        sort: s,
-        asOf: a,
-        snapshot: pinned,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      })
-      .catch((cause: unknown) => {
-        if (token.current === mine) {
-          // 取り直せるようにしておく（スクロールし直せば再挑戦になる）
-          requested.current.delete(page)
-          fail(cause)
-        }
-        return undefined
-      })
-      .then((response) => (token.current === mine ? response : undefined))
-  }, [])
-
-  // ハード世代の起点。1枚目は snapshot を付けずに引き、返ってきた now を以後の固定に使う
-  useEffect(() => {
-    token.current += 1
-    requested.current = new Set([0])
-    lastRange.current = { start: 0, end: 0 }
-    setTotal(undefined)
-    setSnapshot(undefined)
-    setRows(NO_ROWS)
-
-    void fetchPage(0, undefined).then((response) => {
-      if (response === undefined) {
-        setTotal(0)
-        return
-      }
-      setSnapshot(response.snapshot ?? response.now)
-      setTotal(response.total)
-      setRows(indexed(new Map(), response.offset, response.records))
+  const at = { user, asOf }
+  const fetchWindow = (page: number, snapshot: string | undefined) =>
+    client.listPage<Deal>('deal', {
+      filters,
+      sort,
+      asOf,
+      snapshot,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     })
-  }, [key, fetchPage])
 
   /**
-   * ソフト世代（決定K）。行は捨てず、`snapshot` だけ未定に戻して ensureRange を
-   * 新しい固定が来るまで待たせる。起点は**最後に見えていた範囲**のページ —
-   * ハード世代の「先頭ページ」と違い、ユーザーはいまの位置に居続けるため。
-   * 見えている残りの窓は、既存の ensureRange 経路が新しい固定で埋め直す。
+   * 起点の窓。**`snapshot` を付けずに引き、返ってきた `now` を以後の固定に使う**。
+   * この1本だけが世代の時点を決めるので、鮮度は既定のまま（画面に戻ったら取り直す）。
    */
-  const refresh = useCallback(() => {
-    const anchor = Math.max(0, Math.floor(lastRange.current.start / PAGE_SIZE))
-    token.current += 1
-    requested.current = new Set([anchor])
-    setSnapshot(undefined)
+  const head = useQuery({
+    queryKey: keyOf(
+      client,
+      'deal',
+      at,
+      'window',
+      filters,
+      sort ?? '',
+      generation.soft,
+      generation.head,
+    ),
+    queryFn: () => fetchWindow(generation.head, undefined),
+  })
 
-    void fetchPage(anchor, undefined).then((response) => {
-      // 失敗はバナーに出ている。古い行を出したままにする（スケルトンより情報が多い）
-      if (response === undefined) return
-      setSnapshot(response.snapshot ?? response.now)
-      setTotal(response.total)
-      setRows((previous) => indexed(previous, response.offset, response.records))
-    })
-  }, [fetchPage])
+  const pinned = head.data === undefined ? undefined : (head.data.snapshot ?? head.data.now)
+
+  const windows = useQueries({
+    queries: generation.pages
+      .filter((page) => page !== generation.head)
+      .map((page) => ({
+        queryKey: keyOf(
+          client,
+          'deal',
+          at,
+          'window',
+          filters,
+          sort ?? '',
+          generation.soft,
+          page,
+          pinned ?? '',
+        ),
+        queryFn: () => fetchWindow(page, pinned),
+        // 時点が固定される前は引かない（世代の中で時点が混ざらないため）
+        enabled: pinned !== undefined,
+        // 同じ `snapshot` の同じ窓は**不変**なので、取り直す理由が無い
+        staleTime: Infinity,
+      })),
+  })
+
+  // --- 蓄積（手書きが残る部分。冒頭の ⚠ を参照） ---------------------------------
+
+  const rows = useRef<{ key: string; map: Map<number, Deal> }>({ key, map: new Map() })
+  const totals = useRef<{ key: string; value: number | undefined }>({ key, value: undefined })
+  if (rows.current.key !== key) rows.current = { key, map: new Map() }
+  if (totals.current.key !== key) totals.current = { key, value: undefined }
+
+  /**
+   * 取り込み済みのレスポンス。**同じものを二度重ねない**のが要点 —
+   * 毎レンダー重ね直すと、`replaceRow` で差し替えた行が元に戻ってしまう。
+   * 重ねるのは単調（消さない・上書きは新しい応答だけ）なので、描画の途中で走っても壊れない。
+   */
+  const taken = useRef(new WeakSet<object>())
+  const take = (response: ListResponse<Deal> | undefined): void => {
+    if (response === undefined || taken.current.has(response)) return
+    taken.current.add(response)
+    response.records.forEach((record, i) => rows.current.map.set(response.offset + i, record))
+  }
+
+  take(head.data)
+  for (const window of windows) take(window.data)
+  if (head.data !== undefined) totals.current.value = head.data.total
+
+  // 起点が読めない（403 など）なら 0 件として畳む。読み込み中のまま止めない
+  const total = head.isError && totals.current.value === undefined ? 0 : totals.current.value
+
+  const [, redraw] = useReducer((count: number) => count + 1, 0)
+
+  // --- 外から見える口（フェーズ12 でも1文字も変えていない） -----------------------
 
   const ensureRange = useCallback(
     (start: number, end: number) => {
       lastRange.current = { start, end }
-      if (total === undefined || snapshot === undefined || total === 0) return
+      if (total === undefined || total === 0) return
       const first = Math.max(0, Math.floor(start / PAGE_SIZE))
       const last = Math.min(Math.floor(end / PAGE_SIZE), Math.floor((total - 1) / PAGE_SIZE))
 
-      for (let page = first; page <= last; page += 1) {
-        if (requested.current.has(page)) continue
-        requested.current.add(page)
-        void fetchPage(page, snapshot).then((response) => {
-          if (response === undefined) return
-          setRows((previous) => indexed(previous, response.offset, response.records))
-        })
-      }
+      update((base) => {
+        const added: number[] = []
+        for (let page = first; page <= last; page += 1) {
+          if (!base.pages.includes(page)) added.push(page)
+        }
+        // 増えていないなら**同じオブジェクトを返す**（再描画を起こさない）
+        return added.length === 0 ? base : { ...base, pages: [...base.pages, ...added] }
+      })
     },
-    [total, snapshot, fetchPage],
+    [total, update],
   )
 
+  /**
+   * ソフト世代（決定K）。行は捨てず、窓のキーだけ変える。起点は**最後に見ていた範囲**の
+   * ページ — ハード世代の「先頭ページ」と違い、ユーザーはいまの位置に居続けるため。
+   * 見えている残りの窓は、既存の `ensureRange` 経路が新しい固定で埋め直す。
+   */
+  const refresh = useCallback(() => {
+    const anchor = Math.max(0, Math.floor(lastRange.current.start / PAGE_SIZE))
+    update((base) => ({ ...base, soft: base.soft + 1, head: anchor, pages: [anchor] }))
+  }, [update])
+
   const replaceRow = useCallback((id: string, record: Deal) => {
-    setRows((previous) => {
-      for (const [index, row] of previous) {
-        if (row.id !== id) continue
-        const next = new Map(previous)
-        next.set(index, record)
-        return next
-      }
-      return previous
-    })
+    for (const [index, row] of rows.current.map) {
+      if (row.id !== id) continue
+      rows.current.map.set(index, record)
+      redraw()
+      return
+    }
   }, [])
 
   return {
     resetKey: key,
     total,
-    rowAt: useCallback((index: number) => rows.get(index), [rows]),
+    // 蓄積を読むだけ。描き直しは取得結果の変化（と `replaceRow`）が起こす
+    rowAt: useCallback((index: number) => rows.current.map.get(index), []),
     ensureRange,
     replaceRow,
     refresh,
   }
-}
-
-/** 窓のレコードを絶対インデックスで置く。 */
-function indexed(
-  previous: ReadonlyMap<number, Deal>,
-  offset: number,
-  records: readonly Deal[],
-): ReadonlyMap<number, Deal> {
-  const next = new Map(previous)
-  records.forEach((record, i) => next.set(offset + i, record))
-  return next
 }

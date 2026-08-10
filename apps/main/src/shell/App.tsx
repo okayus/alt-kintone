@@ -10,10 +10,12 @@
  * フェーズ9 で2本目（改善要望）が載り、ナビに項目が増えただけで済んでいる。
  */
 import { flows, request as requestFlow, sales } from '@alt/definitions'
+import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError, MASTER_LIMIT, type Client } from './api'
 import { asOfParam } from './format'
+import { createQueryClient, keyOf } from './query'
 // 型だけの import なので実行時のコードは含まれない（決定F の「本番ビルドに含めない」は保たれる）。
 import type { DevUser } from './auth/dev-user'
 import { href, useRoute } from './router'
@@ -76,17 +78,40 @@ export interface AppProps {
   devUsers: DevUserSwitch
 }
 
+/**
+ * **取得の入口**（フェーズ12）。ここが持つのは2つだけ — エラーの受け皿（上部バナー）と、
+ * それに繋いだ QueryClient。中身は `AppBody`。
+ *
+ * ⚠ **2層に割ってあるのは避けられない**（フェーズ12 レビュー①）。`useQuery` は
+ *   **自分が描いた Provider を見られない**（コンテキストは自分より上を探す）ので、
+ *   「Provider を張る」と「クエリで引く」を同じ関数に置くと成立しない。
+ */
 export function App({ clients, devUsers }: AppProps) {
+  const [error, setError] = useState<unknown>(null)
+  // QueryClient は1回だけ作る。`setError` は useState のセッタなので同一性が安定していて、
+  // 生成時に閉じ込めてよい（フェーズ12 論点B）
+  const [queryClient] = useState(() => createQueryClient(setError))
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppBody clients={clients} devUsers={devUsers} error={error} setError={setError} />
+    </QueryClientProvider>
+  )
+}
+
+interface AppBodyProps extends AppProps {
+  error: unknown
+  setError: (error: unknown) => void
+}
+
+function AppBody({ clients, devUsers, error, setError }: AppBodyProps) {
   const route = useRoute()
   const [user, setUser] = useState(devUsers.current)
   // 時点も URL に載せる（フェーズ6、論点D 補）。「先月末時点のこの絞り込み」ごと共有できる
   const [asOfParamValue, setAsOfParam] = useQueryState('as_of', parseAsString.withDefault(''))
   const asOf = asOfParamValue
   const setAsOf = (value: string) => void setAsOfParam(value === '' ? null : value)
-  const [error, setError] = useState<unknown>(null)
-  const [masters, setMasters] = useState<Masters>(emptyMasters)
-
-  const onError = useCallback((value: unknown) => setError(value), [])
+  const onError = useCallback((value: unknown) => setError(value), [setError])
 
   const changeUser = (email: string) => {
     devUsers.onChange(email)
@@ -94,36 +119,39 @@ export function App({ clients, devUsers }: AppProps) {
     setUser(email)
   }
 
-  // マスタは時点指定に追随させない。名前の表示に使うだけなので、
-  // 過去の案件を見ているときも「いまの会社名・氏名」で読めるほうが分かりやすい。
-  useEffect(() => {
-    let live = true
-    setError(null)
-    // ⚠ **従業員は要望フローから引く。** 全ロールがこのフローの operator なので
-    //    （起票ステップの担当が ROLE_KEYS）、営業フローに参加していない人でも名前を引ける。
-    //    営業フローから引いていた頃は、制作担当がシェルの起動時点で 403 になっていた
-    const employees = clients.request.list<Employee>('employee', { limit: MASTER_LIMIT })
+  /**
+   * マスタは**時点指定に追随させない**。名前の表示に使うだけなので、過去の案件を
+   * 見ているときも「いまの会社名・氏名」で読めるほうが分かりやすい。
+   * だからキーの `asOf` は常に `undefined`（省略ではなく、そう決めたと読めるように書く）。
+   *
+   * 切替中に前のマスタを出したままにするのは今日と同じ挙動（`placeholderData`）。
+   * ⚠ **未読バッジには絶対に付けない**（決定N。前の人の件数は一瞬も出さない）。
+   */
+  const at = { user, asOf: undefined }
+
+  // ⚠ **従業員は要望フローから引く。** 全ロールがこのフローの operator なので
+  //    （起票ステップの担当が ROLE_KEYS）、営業フローに参加していない人でも名前を引ける。
+  //    営業フローから引いていた頃は、制作担当がシェルの起動時点で 403 になっていた
+  const employees = useQuery({
+    queryKey: keyOf(clients.request, 'employee', at),
+    queryFn: () => clients.request.list<Employee>('employee', { limit: MASTER_LIMIT }),
+    placeholderData: (previous) => previous,
+  })
+
+  const companies = useQuery({
+    queryKey: keyOf(clients.sales, 'company', at),
     // ⚠ 会社は営業フローのデータなので、参加していない人は読めなくて**正しい**。
     //    ここでエラーにすると要望画面まで赤帯になるので、空のまま進む。
-    //    案件の画面はそれぞれ自分で 403 を出す（黙って壊れるのはそちらでは起きない）
-    const companies = clients.sales
-      .list<Company>('company', { limit: MASTER_LIMIT })
-      .catch(() => [] as Company[])
+    //    案件の画面はそれぞれ自分で 403 を出す（黙って壊れるのはそちらでは起きない）。
+    //    握りつぶしを queryFn の中に置くのは、共通のエラー表示に届かせないため
+    queryFn: () => clients.sales.list<Company>('company', { limit: MASTER_LIMIT }).catch(() => []),
+    placeholderData: (previous) => previous,
+  })
 
-    Promise.all([companies, employees])
-      .then(([companyList, employeeList]) => {
-        if (!live) return
-        setMasters({ companies: byId(companyList), employees: byId(employeeList) })
-      })
-      .catch((cause: unknown) => {
-        if (!live) return
-        setMasters(emptyMasters())
-        setError(cause)
-      })
-    return () => {
-      live = false
-    }
-  }, [clients, user])
+  const masters = useMemo<Masters>(
+    () => ({ companies: byId(companies.data ?? []), employees: byId(employees.data ?? []) }),
+    [companies.data, employees.data],
+  )
 
   // 画面を移ったらエラーを消す。**エラーはそれを出した画面のもの**で、次の画面に
   // 貼り付いたままだと「移った先が壊れている」ように見える。フローが1本のうちは
@@ -131,7 +159,7 @@ export function App({ clients, devUsers }: AppProps) {
   // 連れて行ったことで見つかった
   useEffect(() => {
     setError(null)
-  }, [route])
+  }, [route, setError])
 
   // 「自分」は従業員マスタから引く。API が返すのは ID なので、メールアドレスのままでは
   // 起票者・投稿者・未読の突き合わせができない
@@ -264,8 +292,4 @@ function ErrorBanner({ error, onDismiss }: { error: unknown; onDismiss: () => vo
 
 function byId<T extends { id: string }>(records: readonly T[]): Map<string, T> {
   return new Map(records.map((record) => [record.id, record]))
-}
-
-function emptyMasters(): Masters {
-  return { companies: new Map(), employees: new Map() }
 }

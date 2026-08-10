@@ -15,11 +15,13 @@
  */
 import { changeRequest as requestDef, flows, tables } from '@alt/definitions'
 import { definitionRefLabel, definitionRefOptions, resolveDefinitionRef } from '@alt/dsl'
-import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { contextFromRoute, stepRef, type ContextDraft } from './requestContext'
 import type { Clients } from '../../shell/App'
 import type { ScreenProps } from '../../shell/App'
 import { fieldLabel } from '../../shell/labels'
+import { keyOf } from '../../shell/query'
 import { href } from '../../shell/router'
 import type { ChangeRequest, ChangeRequestInput, RequestSituation } from '../../shell/types'
 
@@ -32,41 +34,44 @@ type Props = Omit<ScreenProps, 'client'> & {
   from?: string | undefined
 }
 
-export function RequestNew({ clients, meId, onError, from }: Props) {
+export function RequestNew({ clients, meId, user, onError, from }: Props) {
   const base = useMemo(() => contextFromRoute(from), [from])
 
   const [kind, setKind] = useState('')
   const [problem, setProblem] = useState('')
   const [wish, setWish] = useState('')
   const [targetField, setTargetField] = useState('')
-  const [context, setContext] = useState<ContextDraft>(base)
-  const [situation, setSituation] = useState<RequestSituation | null>(null)
   const [busy, setBusy] = useState(false)
 
   // 対象レコードがあるなら、**現在ステップと未充足の出口条件をサーバから足す**。
   // 「なぜそこで困ったか」の状況証拠になる（論点D）。画面が状態を渡してくる形にしない
-  useEffect(() => {
-    const { targetTable, targetRecordId } = base
-    if (targetTable === undefined || targetRecordId === undefined) return undefined
-    let live = true
-    const client = targetTable === 'change_request' ? clients.request : clients.sales
-    client
-      .get<{ _flow: ChangeRequest['_flow'] }>(targetTable, targetRecordId)
-      .then((record) => {
-        const flow = record._flow
-        if (!live || flow === null || flow === undefined) return
-        setContext((prev) => ({ ...prev, targetStep: stepRef(flow.flow, flow.step) }))
-        setSituation({
-          unmetChecks: flow.exit.filter((exit) => !exit.satisfied).map((exit) => exit.key),
-        })
-      })
-      // 対象が読めない（権限が無い・消えている）ことは起票の妨げにしない。
-      // 添えられるものが減るだけで、困りごとは書ける
-      .catch(() => undefined)
-    return () => {
-      live = false
-    }
-  }, [base, clients])
+  const { targetTable, targetRecordId } = base
+  const client = targetTable === 'change_request' ? clients.request : clients.sales
+  const target = useQuery({
+    queryKey: keyOf(client, targetTable ?? '', { user, asOf: undefined }, targetRecordId ?? ''),
+    queryFn: () =>
+      client
+        .get<{ _flow: ChangeRequest['_flow'] }>(targetTable ?? '', targetRecordId ?? '')
+        // 対象が読めない（権限が無い・消えている）ことは起票の妨げにしない。
+        // 添えられるものが減るだけで、困りごとは書ける。**共通のエラー表示にも出さない**
+        // ので、握りつぶしは queryFn の中に置く（フェーズ12 論点B）
+        .catch(() => null),
+    enabled: targetTable !== undefined && targetRecordId !== undefined,
+  })
+
+  // 添えるものは**取得結果から導く**（フェーズ12: マージ先の state を持たない）
+  const flow = target.data?._flow ?? null
+  const context = useMemo<ContextDraft>(
+    () => (flow === null ? base : { ...base, targetStep: stepRef(flow.flow, flow.step) }),
+    [base, flow],
+  )
+  const situation = useMemo<RequestSituation | null>(
+    () =>
+      flow === null
+        ? null
+        : { unmetChecks: flow.exit.filter((exit) => !exit.satisfied).map((exit) => exit.key) },
+    [flow],
+  )
 
   const kinds = requestDef.fields.kind?.values ?? []
   // 対象のデータ項目は **その画面のテーブルの中から**選ばせる（論点B）。

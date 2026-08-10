@@ -17,6 +17,7 @@ import {
   type DefinitionRefKind,
   type DefinitionScope,
 } from '@alt/dsl'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { RequestChat } from './RequestChat'
 import { RequestProposal } from './RequestProposal'
@@ -27,6 +28,7 @@ import { ExitChecklist } from '../../shell/flow/ExitChecklist'
 import { StepTrack } from '../../shell/flow/StepTrack'
 import { dateTime, orDash } from '../../shell/format'
 import { fieldLabel, label } from '../../shell/labels'
+import { keyOf } from '../../shell/query'
 import { href } from '../../shell/router'
 import type { ChangeRequest, ChangeRequestPatch, ChangeRequestRead } from '../../shell/types'
 
@@ -41,26 +43,17 @@ export function RequestDetail({
   onError,
   id,
 }: ScreenProps & { id: string }) {
-  const [record, setRecord] = useState<ChangeRequest | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  /** 本体を読み直す合図。やりとりを書くと `replied` が変わるので、そのときも上げる。 */
-  const [generation, setGeneration] = useState(0)
 
-  useEffect(() => {
-    let live = true
-    client
-      .get<ChangeRequest>('change_request', id, { asOf })
-      .then((next) => {
-        if (live) setRecord(next)
-      })
-      .catch((cause: unknown) => {
-        if (live) onError(cause)
-      })
-    return () => {
-      live = false
-    }
-  }, [client, id, asOf, user, generation, onError])
+  const queries = useQueryClient()
+  const recordKey = keyOf(client, 'change_request', { user, asOf }, id)
+
+  const query = useQuery({
+    queryKey: recordKey,
+    queryFn: () => client.get<ChangeRequest>('change_request', id, { asOf }),
+  })
+  const record = query.data
 
   // 開いたら既読にする（未読バッジが消える条件）。過去を見ているときは書かない
   useEffect(() => {
@@ -80,7 +73,8 @@ export function RequestDetail({
     setBusy(true)
     setNotice(null)
     run()
-      .then(setRecord)
+      // 取り直しを待たずにその場を置き換える（今日の setRecord と同型）
+      .then((next) => queries.setQueryData(recordKey, next))
       .catch(onError)
       .finally(() => setBusy(false))
   }
@@ -160,11 +154,13 @@ export function RequestDetail({
         client={client}
         requestId={record.id}
         meId={meId}
+        user={user}
         nameOf={nameOf}
         asOf={asOf}
         onError={onError}
         // 書き込むと出口条件「起票者に返信した」が自動で充足に変わる。読み直して反映する
-        onPosted={() => setGeneration((value) => value + 1)}
+        // （フェーズ12: 読み直しの合図だった `generation` state がこれ1行になった）
+        onPosted={() => void queries.invalidateQueries({ queryKey: recordKey })}
       />
 
       <footer className="deal-version">

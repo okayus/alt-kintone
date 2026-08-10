@@ -9,11 +9,13 @@
  *
  * フェーズ7 と同じ扱い — 実機で見つけた欠陥は回帰テストにする。
  */
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { UnreadBadge } from './UnreadBadge'
 import type { Client } from './api'
+import { createQueryClient } from './query'
 import type { ChangeRequest, ChangeRequestMessage, ChangeRequestRead } from './types'
 
 const meta = {
@@ -41,6 +43,7 @@ const MESSAGES = [
 /** 遅延を入れられるスタブ。切り替え直後の「まだ数え直せていない」状態を作るため。 */
 function stubClient(delayMs = 0): Client {
   return {
+    flow: 'request',
     async list<T>(table: string): Promise<T[]> {
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs))
       if (table === 'change_request') return REQUESTS as unknown as T[]
@@ -52,16 +55,25 @@ function stubClient(delayMs = 0): Client {
 
 let root: Root | undefined
 let host: HTMLElement | undefined
+let queries: QueryClient | undefined
 
+/**
+ * ⚠ **QueryClient はテストの中で使い回す。** 利用者の切替ごとに作り直すと
+ *   キャッシュごと消えてしまい、「キーが違うから前の数が出ない」という
+ *   保証（フェーズ12 論点C）を検証していないことになる。
+ */
 function render(client: Client, user: string, meId: string): void {
   if (root === undefined) {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
+    queries = createQueryClient(() => undefined)
   }
   root.render(
     <StrictMode>
-      <UnreadBadge client={client} user={user} meId={meId} />
+      <QueryClientProvider client={queries as QueryClient}>
+        <UnreadBadge client={client} user={user} meId={meId} />
+      </QueryClientProvider>
     </StrictMode>,
   )
 }
@@ -78,6 +90,9 @@ afterEach(() => {
   root = undefined
   host?.remove()
   host = undefined
+  // ポーリングを次のテストへ持ち越さない
+  queries?.clear()
+  queries = undefined
 })
 
 describe('UnreadBadge', () => {
