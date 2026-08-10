@@ -11,6 +11,7 @@
  */
 import { activity as activityDef, deal as dealDef, sales } from '@alt/definitions'
 import { useCallback, useEffect, useState } from 'react'
+import { DealChat } from './DealChat'
 import { DealForm } from './DealForm'
 import { fieldLabel, label } from '../../shell/labels'
 import { exitLabel, stepName } from './steps'
@@ -27,6 +28,7 @@ export function DealDetail({
   masters,
   asOf,
   user,
+  meId,
   onError,
   id,
 }: ScreenProps & { id: string }) {
@@ -180,7 +182,27 @@ export function DealDetail({
 
       <section className="deal-body">
         <h3>活動</h3>
+        <p className="muted section-note">顧客との接触の記録。出口条件の自動判定が読んでいる。</p>
         <ActivityList activities={activities} nameOf={nameOf} />
+      </section>
+
+      {/*
+        社内のやりとり（フェーズ11）。**活動とは別区画**にするのが v1 の手当そのもの
+        （論点F）— 接触の報告がこちらに流れると、活動が書かれなくなって
+        自動判定が充足しなくなる。区画と説明文で言葉の区別を保つ。
+      */}
+      <section className="deal-body">
+        <p className="muted section-note">
+          案件についての社内の相談・指示・引き継ぎ。顧客には見えない。
+        </p>
+        <DealChat
+          client={client}
+          dealId={deal.id}
+          meId={meId}
+          nameOf={nameOf}
+          asOf={asOf}
+          onError={onError}
+        />
       </section>
 
       <footer className="deal-version">

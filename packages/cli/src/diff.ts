@@ -287,7 +287,9 @@ export function formatDiff(diff: BundleDiff, applied: AppliedBundle): string[] {
     return lines
   }
 
-  let group = ' '
+  // ⚠ 番兵に NUL（`'\0'`）を使わない。**ファイルが binary 扱いになり、grep が
+  //    何も言わずにこのファイルを飛ばす**（フェーズ11 で実際に踏んだ）。
+  let group: string | undefined
   for (const entry of diff.entries) {
     const where = entry.where.join(' ＞ ')
     if (where !== group) {
@@ -307,10 +309,13 @@ export function formatDiff(diff: BundleDiff, applied: AppliedBundle): string[] {
     }
   }
 
+  // ⚠ 「遷移が変わった業務フロー」とは書かない。合併グラフは**そのフローに1件でも
+  //    差分があれば添える**（変わっていない段階も位置の基準として要る）ので、
+  //    遷移そのものは変わっていないことのほうが多い
   lines.push(
     '',
     `差分 ${diff.entries.length} 件` +
-      (diff.graphs.length === 0 ? '' : ` / 遷移が変わった業務フロー ${diff.graphs.length} 本`),
+      (diff.graphs.length === 0 ? '' : ` / 図を添えた業務フロー ${diff.graphs.length} 本`),
   )
   return lines
 }

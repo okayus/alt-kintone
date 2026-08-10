@@ -221,6 +221,25 @@ describe('層2: 参照整合', () => {
     expect(error?.message).toContain('todo')
   })
 
+  it('append-by-participants-without-viewers — 開ける相手が居ない宣言', () => {
+    // 追記を「参加者全員」に開いても、viewers が居なければ担当ロールと管理者しか
+    // 居ない ＝ 宣言が何も変えていない（フェーズ11 決定A）
+    const errors = broken((b) => {
+      anyway<{ appendBy: string }>(b.flows[0]?.bindings[0]).appendBy = 'participants'
+    })
+    const error = errors.find((e) => e.rule === 'append-by-participants-without-viewers')
+    expect(error?.where).toMatchObject({ flow: 'work', table: 'task' })
+    expect(error?.hint).toContain('viewers')
+
+    // viewers が居れば通る
+    const ok = broken((b) => {
+      anyway<{ appendBy: string }>(b.flows[0]?.bindings[0]).appendBy = 'participants'
+      anyway<{ viewers: string[] }>(b.flows[0]).viewers = ['watcher']
+      b.roles.push(role('watcher', '見る人', '進捗を見る'))
+    })
+    expect(rules(ok)).not.toContain('append-by-participants-without-viewers')
+  })
+
   it('unknown-next-step — 候補を hint に並べる', () => {
     const errors = broken((b) => {
       anyway<{ next: string[] }>(b.flows[0]?.steps[0]).next = ['don']

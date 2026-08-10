@@ -128,6 +128,19 @@ export interface Employee extends Meta {
   status: string
 }
 
+/**
+ * 案件をめぐる社内のやりとり（フェーズ11）。
+ * **顧客との接触は `Activity`** で、こちらは相談・指示・引き継ぎ（論点F）。
+ */
+export interface DealMessage extends Meta {
+  id: string
+  dealId: string
+  authorEmployeeId: string
+  body: string
+  postedAt: string
+  authorKind: 'human' | 'ai'
+}
+
 export interface Activity extends Meta {
   id: string
   companyId: string

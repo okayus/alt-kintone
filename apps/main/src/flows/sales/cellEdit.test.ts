@@ -6,7 +6,7 @@
  */
 import { deal } from '@alt/definitions'
 import { describe, expect, it } from 'vitest'
-import { isChanged, isImeKey, parseDraft, toDraft } from './cellEdit'
+import { isChanged, parseDraft, toDraft } from './cellEdit'
 
 function field(name: string) {
   const def = deal.fields[name]
@@ -71,16 +71,4 @@ describe('isChanged', () => {
   })
 })
 
-describe('isImeKey', () => {
-  /**
-   * 変換確定の Enter は「文字列の確定」であって「セルの確定」ではない（§2-2）。
-   * Chrome / Firefox は isComposing、Safari の癖と古い経路は keyCode 229 で拾う。
-   */
-  it('isComposing か keyCode 229 なら IME のキー', () => {
-    expect(isImeKey({ isComposing: true, keyCode: 229 })).toBe(true)
-    expect(isImeKey({ isComposing: false, keyCode: 229 })).toBe(true)
-    expect(isImeKey({ isComposing: true, keyCode: 13 })).toBe(true)
-    expect(isImeKey({ isComposing: false, keyCode: 13 })).toBe(false)
-    expect(isImeKey({})).toBe(false)
-  })
-})
+// ⚠ IME ガード（`isImeKey`）のテストは `shell/keys.test.ts` へ移した（フェーズ11 T1）。

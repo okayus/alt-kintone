@@ -83,7 +83,7 @@ export function resolveContext(deps: Deps, request: ApiRequest, tableName: strin
   const principal = authenticate(deps.db, request.headers, deps.authenticator)
   const participation = requireParticipation(principal, usage.flow)
 
-  const asOf = parseAsOf(request.query['as_of'], 'as_of')
+  const asOf = parseWriteSafeAsOf(request)
   const snapshot = parseSnapshot(request)
 
   return {
@@ -100,6 +100,28 @@ export function resolveContext(deps: Deps, request: ApiRequest, tableName: strin
     offset: parseOffset(request.query['offset']),
     now: (deps.clock ?? (() => new Date().toISOString()))(),
   }
+}
+
+/**
+ * 時点指定（`as_of`）は**読み取り専用**。書き込みに付いていたら入口で弾く。
+ *
+ * ⚠ **これが無いと `POST` が「書けたのに 404」になる**（フェーズ11 の動作確認で発覚）。
+ * 作成そのものは現在に対して行われて成功するが、返すために読み直すのは `as_of` 時点
+ * ＝ その行がまだ存在しない時点なので、**行は入ったのに呼び出し側にはエラーが返る**。
+ * 更新（PATCH）は行レベル認可の手前で弾けていたので気づかなかった
+ * — フェーズ8 で見つけた「POST だけ守りが1枚少ない」の2例目で、原因も同じ
+ * （既存行を前提にした守りは、行がまだ無い操作をすり抜ける）。
+ */
+function parseWriteSafeAsOf(request: ApiRequest): string | undefined {
+  const asOf = parseAsOf(request.query['as_of'], 'as_of')
+  if (asOf !== undefined && request.method !== 'GET') {
+    throw badRequest(
+      'as_of を付けたリクエストは読み取り専用',
+      '過去のバージョンは書き換えられない（有効期間型の書き込みは常に現在に対して行う）。' +
+        '時点を外して呼ぶ',
+    )
+  }
+  return asOf
 }
 
 /**

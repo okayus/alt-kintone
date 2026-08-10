@@ -22,9 +22,12 @@ const EMPLOYEES = [
   { id: 'e-yamada', name: '山田 太郎', email: 'yamada@example.com', role: 'sales_rep' },
   { id: 'e-sato', name: '佐藤 花子', email: 'sato@example.com', role: 'sales_rep' },
   { id: 'e-suzuki', name: '鈴木 一郎', email: 'suzuki@example.com', role: 'sales_manager' },
-  // 営業フローの担当ロールでも viewers でもない ＝ 参加していない。
-  // 「フローに参加していないと 403」を画面で確かめられるようにするために居る
+  // フェーズ11 決定C で営業フローの viewers に入った2人（それまでは参加しておらず、
+  // 案件が1件も読めない役だった）。受注後の引き継ぎを受ける側なので、
+  // **案件は読めるが直せない・やりとりには書ける**という立場になる。
+  // 引き継ぎ先は商材で分かれる — 求人広告は制作、MEO は運用
   { id: 'e-mori', name: '森 次郎', email: 'mori@example.com', role: 'production' },
+  { id: 'e-kubo', name: '久保 綾', email: 'kubo@example.com', role: 'meo_operator' },
   { id: 'e-admin', name: '管理者', email: 'admin@example.com', role: 'admin' },
 ].map((e) => ({ ...e, team: '第1営業部', status: 'active' }))
 
@@ -219,6 +222,45 @@ const CHANGE_REQUEST_MESSAGES = [
  */
 const CHANGE_REQUEST_READS = [
   { id: 'crr-1', requestId: 'cr-competitor', employeeId: 'e-yamada', readAt: T0 },
+]
+
+/**
+ * 案件のやりとり（docs/impl/phase-11-chat.md 9-3）。
+ *
+ * 3件で、**フェーズ11 で開いたものが3つとも絵になる**ように置いてある:
+ *  - 鈴木（マネージャー = viewers。案件は直せない）が書いている ＝ 決定A
+ *  - 決着済み（`d-yamada-meo` は won）に書けている ＝ 論点G 付記
+ *  - 久保（MEO運用。決定C で viewers に入った）が読んで返している ＝ 引き継ぎ（決定B）
+ *
+ * ⚠ 引き継ぎ先は**商材で決まる**。`d-yamada-meo` は MEO なので相手は MEO運用担当で、
+ *   制作担当ではない（求人広告の案件なら森）。ここを取り違えると、
+ *   「引き継ぎのための viewers」という決定C の理由づけが seed の中で崩れる。
+ */
+const DEAL_MESSAGES = [
+  {
+    id: 'dm-1',
+    dealId: 'd-aoi-meo',
+    authorEmployeeId: 'e-suzuki',
+    body: '月額3万で12ヶ月なら粗利率は悪くない。決裁者に会えていないのが気になるので、次回はオーナー同席で',
+    postedAt: T1,
+    authorKind: 'human',
+  },
+  {
+    id: 'dm-2',
+    dealId: 'd-yamada-meo',
+    authorEmployeeId: 'e-sato',
+    body: '受注しました。初期設定の連絡先は店主の山田さんです。既存の求人広告と同じ窓口なので、そちらの履歴も見てください',
+    postedAt: T1,
+    authorKind: 'human',
+  },
+  {
+    id: 'dm-3',
+    dealId: 'd-yamada-meo',
+    authorEmployeeId: 'e-kubo',
+    body: '了解しました。今週中に初期設定に入ります',
+    postedAt: T1,
+    authorKind: 'human',
+  },
 ]
 
 const ACTIVITIES = [
@@ -438,6 +480,9 @@ export function seed(
     }
 
     for (const activity of ACTIVITIES) insert('activity', activity, null)
+    // `postedAt` は本来サーバが埋める（`fill: 'createdAt'`）。シードは insertRecord を
+    // 直に叩く開発用の裏口なので、要望のやりとりと同じく明示的に渡す
+    for (const message of DEAL_MESSAGES) insert('deal_message', message, null, message.postedAt)
 
     // 改善要望。`filedAt` / `postedAt` は本来サーバが埋めるが、シードは
     // `insertRecord` を直に叩く開発用の裏口なので明示的に渡す（決定G）

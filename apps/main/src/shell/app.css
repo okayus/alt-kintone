@@ -1101,7 +1101,7 @@ tbody tr:last-child td {
 .request-target h3,
 .request-proposal h3,
 .request-handling h3,
-.request-chat h3 {
+.chat-panel h3 {
   margin: 0 0 10px;
   font-size: 14px;
 }
@@ -1182,30 +1182,52 @@ tbody tr:last-child td {
   margin-top: 10px;
 }
 
-.request-chat {
+/* 区画の役割を1行で。活動とやりとりの取り違えを言葉で防ぐ（フェーズ11 論点F） */
+.section-note {
+  margin: -4px 0 10px;
+  font-size: 13px;
+}
+
+/* --- やりとり（フェーズ11。要望・案件の両方がこの部品で描かれる） --- */
+
+.chat-panel {
   margin: 18px 0;
 }
 
-.chat-messages {
+.chat-log-wrap {
+  position: relative;
   margin: 0 0 12px;
+}
+
+/* 高さを固定して枠の中でスクロールさせる（論点A）。画面が伸び続けない */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.chat-messages .message {
+.chat-message {
+  max-width: 78%;
+  align-self: flex-start;
   padding: 8px 12px;
-  margin-bottom: 8px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 
-.chat-messages .message.mine {
+/* 自分は右（論点B。役割ではなく meId で決める） */
+.chat-message.mine {
+  align-self: flex-end;
   background: #eef4ff;
   border-color: #cddcf7;
 }
 
-.message-head {
+.chat-message-head {
   display: flex;
   gap: 8px;
   align-items: baseline;
@@ -1213,9 +1235,23 @@ tbody tr:last-child td {
   font-size: 13px;
 }
 
-.message-body {
+.chat-message-body {
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* 上を読んでいる最中に届いた新着の合図。押すと最新へ */
+.chat-jump {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .chat-form {

@@ -3,4 +3,5 @@ export { changeRequest, changeRequestMessage, changeRequestRead } from './change
 export { company } from './company.js'
 export { contact } from './contact.js'
 export { deal } from './deal.js'
+export { dealMessage } from './deal-message.js'
 export { employee } from './employee.js'

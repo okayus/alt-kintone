@@ -493,6 +493,22 @@ function validateRules(bundle: DefinitionBundle): ValidationError[] {
         hint: '使うステップの reads / writes に足すか、バインドを削る（access は導出される）',
       })
     }
+
+    // `appendBy: 'participants'` が開くのは viewer だけ（担当ロールと管理者は元から
+    // 書ける）。viewers が空なら開ける相手が居ないので、宣言が効いていない
+    // （docs/impl/phase-11-chat.md 決定A）
+    for (const binding of flow.bindings) {
+      if (binding.appendBy !== 'participants' || (flow.viewers ?? []).length > 0) continue
+      errors.push({
+        layer: 'rule',
+        rule: 'append-by-participants-without-viewers',
+        where: { flow: flow.key, table: binding.table },
+        message: 'appendBy: "participants" を宣言しているが、このフローに viewers が居ない',
+        hint:
+          'この宣言が開くのは viewers（操作しないが読む立場）だけ。担当ロールと管理者は元から書ける。' +
+          'viewers を足すか、宣言を外す',
+      })
+    }
   }
 
   for (const [name, table] of Object.entries(bundle.tables)) {

@@ -19,7 +19,7 @@ import {
   type Pred,
   type RowFilter,
 } from '@alt/dsl'
-import { activity, company, contact, deal, employee } from '../tables/index.js'
+import { activity, company, contact, deal, dealMessage, employee } from '../tables/index.js'
 
 // ---------------------------------------------------------------------------
 // 出口条件の条件式
@@ -165,6 +165,21 @@ const ownedByCurrentUser: RowFilter = {
   },
 }
 
+/**
+ * やりとりを直せるのは書いた本人だけ（要望のやりとりと同じ形）。
+ *
+ * ⚠ **追記できるか**とは別の話。追記は行がまだ無いので rowFilter を評価できず、
+ * `appendBy` の宣言で決まる（フェーズ11 決定A）。
+ */
+const writtenByCurrentUser: RowFilter = {
+  write: {
+    type: 'compare',
+    op: 'eq',
+    left: { type: 'field', source: ROOT_SOURCE, path: ['authorEmployeeId'] },
+    right: { type: 'context', name: 'currentUser.id' },
+  },
+}
+
 // ---------------------------------------------------------------------------
 // フロー
 // ---------------------------------------------------------------------------
@@ -172,7 +187,7 @@ const ownedByCurrentUser: RowFilter = {
 /** 商談相手のマスタ。この営業フローは読むだけで、維持は別（マスタ管理の置き場は未確定）。 */
 const REFERENCE_TABLES = [company, contact, employee]
 /** このフローが生成・更新するもの。 */
-const OWNED_TABLES = [deal, activity]
+const OWNED_TABLES = [deal, activity, dealMessage]
 
 /**
  * 決着ステップ。出口条件を持たない（出る先が無いので、出る条件も無い）。
@@ -181,9 +196,22 @@ const OWNED_TABLES = [deal, activity]
  *
  * ⚠ `deal.status` と値が1対1で重なっている。二重管理になりうる論点として
  * docs/product-concept.md §8-2 に記録した。
+ *
+ * ⚠ **やりとり（`deal_message`）はここでも書く。** access の導出は全ステップの和なので
+ * 機能上は書かなくても通るが、引き継ぎ（受注後）と失注の振り返りは**決着してから**
+ * 起きるので、書かないと参照画面の「使うステップ」が業務と食い違う
+ * （docs/impl/phase-11-chat.md 9-1 の 4）。定義は業務の教科書。
  */
 const outcome = (key: string, name: string, intent: string) =>
-  step({ key, name, intent, roles: ['sales_rep'], writes: [deal], exit: [], next: [] })
+  step({
+    key,
+    name,
+    intent,
+    roles: ['sales_rep'],
+    writes: [deal, dealMessage],
+    exit: [],
+    next: [],
+  })
 
 export const sales = flow({
   key: 'sales',
@@ -194,10 +222,15 @@ export const sales = flow({
   target: deal,
   initial: 'contacted',
 
-  // 操作はしないが全案件を読む立場。ヨミ会・予測のために見る場所であって、
-  // 直すのは担当者（確定事項「書きは担当者＋管理者」）。これが無いと
-  // マネージャーは案件を1件も読めない（§8-2 論点12 / phase-8 論点A）。
-  viewers: ['sales_manager'],
+  // 操作はしないが全案件を読む立場。直すのは担当者（確定事項「書きは担当者＋管理者」）。
+  // これが無いとマネージャーは案件を1件も読めない（§8-2 論点12 / phase-8 論点A）。
+  //
+  // **列挙する**（`ROLE_KEYS` の導出にしない）。ここは「読む理由」を明示する場所で、
+  // 理由がそれぞれ違うため — マネージャーはヨミ会・予測のため、制作とMEO運用は
+  // **受注後の引き継ぎと運用のため**（フェーズ11 決定C。won の intent に
+  // 「制作・運用の工程へ引き継ぐ」と元から書いてある）。導出にすると、
+  // 将来足したロールが**判断を経ずに全案件を読めてしまう**。
+  viewers: ['sales_manager', 'production', 'meo_operator'],
 
   // intent（この段階で目指すこと）は sales-domain.md §4-5 の原則
   // 「ステージは買い手の状態変化で定義する」を、定義そのものに残す場所。
@@ -306,7 +339,7 @@ export const sales = flow({
       name: '保留',
       intent: '先方都合の凍結。追跡は続けるが、ヨミ（予測）からは外す',
       roles: ['sales_rep'],
-      writes: [deal],
+      writes: [deal, dealMessage],
       exit: [
         manualCheck(
           'resumable',
@@ -326,6 +359,13 @@ export const sales = flow({
       rowFilter: ownedByCurrentUser,
     }),
     bind(activity, 'primary', '接触記録と次アクション', { rowFilter: ownedByCurrentUser }),
+    // 社内のやりとり。**顧客との接触は activity**（論点F）で、こちらは相談・指示・引き継ぎ。
+    // `appendBy` があるので、マネージャー・制作・MEO運用（viewers = 案件を直せない人）も
+    // ここには書ける（フェーズ11 決定A）。直せるのは書いた本人だけ
+    bind(dealMessage, 'primary', '案件をめぐる社内のやりとり（相談・指示・引き継ぎ）', {
+      rowFilter: writtenByCurrentUser,
+      appendBy: 'participants',
+    }),
     bind(company, 'reference', '商談相手の組織情報'),
     bind(contact, 'reference', '決裁者の特定と接触相手の記録'),
     // ※ store / contract は最小スコープでは定義していない（domain-model.md §6-1 では

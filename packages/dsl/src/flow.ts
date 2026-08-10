@@ -92,12 +92,30 @@ export interface RowFilter {
   write: Pred
 }
 
+/**
+ * **誰が追記（新規作成）できるか**（docs/impl/phase-11-chat.md 決定A）。
+ *
+ *  - operators     … 担当ロールと管理者だけ（既定。書かなければこれ）
+ *  - participants  … このフローに参加している人全員。**`viewers` も書ける**
+ *
+ * 「操作はしないが見る」立場（`FlowDef.viewers`）が、社内のやりとりのような
+ * 追記型のテーブルにだけは書ける、という業務が実際にある（案件チャットで
+ * マネージャーが相談に応じる・制作へ引き継ぐ）。参加の種類を5つに増やしたり
+ * viewer の一般定義を変えたりせず、**このテーブルに限った関係の宣言**として書く。
+ *
+ * ⚠ 開くのは**追記だけ**。更新（PATCH）・遷移・手動チェックは viewer を止めたまま。
+ */
+export const APPEND_POLICIES = ['operators', 'participants'] as const
+export type AppendPolicy = (typeof APPEND_POLICIES)[number]
+
 export interface BindingDef {
   table: string
   role: BindingRole
   /** 何のために使うか。**必須**。バインディングを業務上の意味の記録にするため（§3-3）。 */
   purpose: string
   rowFilter?: RowFilter
+  /** 書かなければ `operators`（＝いままでどおり viewer は書けない）。 */
+  appendBy?: AppendPolicy
 }
 
 /**
@@ -108,11 +126,12 @@ export function bind(
   table: TableDef,
   role: BindingRole,
   purpose: string,
-  opts: { rowFilter?: RowFilter } = {},
+  opts: { rowFilter?: RowFilter; appendBy?: AppendPolicy } = {},
 ): BindingDef {
   const binding: BindingDef = { table: table.name, role, purpose }
   // 未指定のときはキーごと持たない（JSON にした形をそのまま契約にするため）
   if (opts.rowFilter !== undefined) binding.rowFilter = opts.rowFilter
+  if (opts.appendBy !== undefined) binding.appendBy = opts.appendBy
   return binding
 }
 
@@ -322,6 +341,7 @@ export const bindingDefSchema: z.ZodType<BindingDef> = z.object({
   role: z.enum(BINDING_ROLES),
   purpose: z.string().min(1),
   rowFilter: z.object({ write: predSchema }).optional(),
+  appendBy: z.enum(APPEND_POLICIES).optional(),
 })
 
 export const stepDefSchema: z.ZodType<StepDef> = z.object({

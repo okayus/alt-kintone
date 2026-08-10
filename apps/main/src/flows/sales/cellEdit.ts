@@ -40,11 +40,5 @@ export function isChanged(current: unknown, next: string | number | null): boole
   return (current ?? null) !== next
 }
 
-/**
- * IME の変換確定のキーか（§2-2）。「文字列の確定」であって「セルの確定」ではないので、
- * これが true の Enter は無視する。Chrome / Firefox は `isComposing`、古い経路と
- * Safari の癖（`compositionend` が先に飛ぶ）は `keyCode === 229` で拾う。
- */
-export function isImeKey(event: { isComposing?: boolean; keyCode?: number }): boolean {
-  return event.isComposing === true || event.keyCode === 229
-}
+// ⚠ `isImeKey` はここから `shell/keys.ts` へ移した（フェーズ11 T1）。
+//    チャットの Enter 送信も同じ罠を踏むので、業務フローの配下に置いておけない。

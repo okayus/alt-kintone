@@ -57,9 +57,14 @@ export function FlowReference({ flowKey, currentStep }: FlowReferenceProps) {
       <header className="flow-ref-head">
         <h2>{flow.name}</h2>
         <p className="muted">ゴール: {flow.goal}</p>
+        {/*
+          「操作はしない」とだけ書くと嘘になる（フェーズ11 決定A）— viewers は
+          `appendBy: "participants"` を宣言したテーブルには追記できる。
+          何に書けるかは下の「この業務で使うデータ」に出るので、ここでは進めないことだけ言う。
+        */}
         {(flow.viewers ?? []).length > 0 && (
           <p className="muted">
-            この業務を見られる人（操作はしない）: {(flow.viewers ?? []).map(roleName).join(' / ')}
+            この業務を読む人（進める操作はしない）: {(flow.viewers ?? []).map(roleName).join(' / ')}
           </p>
         )}
       </header>
@@ -304,7 +309,17 @@ function UsedData({ flow }: { flow: FlowDef }) {
                 )}
               </td>
               {/* write は書き込み専用ではなく読みも含む（§3-3）ので「読み書き」と出す */}
-              <td>{used === undefined ? '—' : used.access === 'read' ? '読む' : '読み書き'}</td>
+              <td>
+                {used === undefined ? '—' : used.access === 'read' ? '読む' : '読み書き'}
+                {/* 追記だけは「読む人」にも開いている（フェーズ11 決定A）。
+                    ヘッダの「進める操作はしない」と対になる情報なので、ここに出す */}
+                {binding?.appendBy === 'participants' && (
+                  <>
+                    <br />
+                    <span className="muted">追記は読む人も可</span>
+                  </>
+                )}
+              </td>
               <td>
                 {binding?.purpose ?? (
                   <span className="muted">横断マスタ。実参照が自動記録される</span>

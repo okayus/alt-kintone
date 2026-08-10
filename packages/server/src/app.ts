@@ -10,8 +10,8 @@
  * `parseArgs` を選んだのと同じ理由）。
  */
 import { ApiError, badRequest, notFound, type ApiRequest, type ApiResponse } from './api.js'
-import { requireOperator, requireTableWrite } from './authz.js'
-import { isHistorical, resolveContext, type Deps, type RequestContext } from './context.js'
+import { requireCreate, requireOperator, requireTableWrite } from './authz.js'
+import { resolveContext, type Deps, type RequestContext } from './context.js'
 import { advance, currentStepKey, setManualCheck } from './flow-state.js'
 import { parseListSelection } from './list-query.js'
 import { createRecord, getRecord, listRecords, updateRecord } from './records.js'
@@ -78,8 +78,9 @@ function route(deps: Deps, request: ApiRequest): ApiResponse {
     if (request.method === 'POST') {
       requireTableWrite(ctx.usage)
       // ⚠ 新規作成には行レベル認可が効かない（まだ行が無いので rowFilter を評価できない）。
-      // viewer を止められるのはここだけ（docs/impl/phase-8-authz-participation.md §2-2）
-      requireOperator(ctx.participation, 'レコードの作成')
+      // viewer を止められるのはここだけ（docs/impl/phase-8-authz-participation.md §2-2）。
+      // **追記を参加者全員に開くかどうかもここで決まる**（フェーズ11 決定A）
+      requireCreate(ctx.participation, ctx.usage)
       return { status: 201, body: { record: createRecord(deps, ctx, request.body) } }
     }
     throw methodNotAllowed(request, ['GET', 'POST'])
@@ -157,9 +158,9 @@ function requireRowWritable(deps: Deps, ctx: RequestContext, id: string): void {
   const record = getRecord(deps, ctx, id)
   const permissions = (record['_permissions'] ?? {}) as Record<string, boolean>
   if (permissions['update'] === true) return
-  if (isHistorical(ctx)) {
-    throw badRequest('as_of を付けた読み取り専用のリクエストでは更新できない')
-  }
+  // ⚠ 「過去に書こうとしている」はここでは判定しない。**入口（`resolveContext`）で
+  //    弾いている**（フェーズ11。POST が同じ穴を持っていたので、書き込み全部に効く
+  //    場所へ移した）。ここまで来たなら理由は行レベル認可しかない
   throw new ApiError(
     403,
     'forbidden',

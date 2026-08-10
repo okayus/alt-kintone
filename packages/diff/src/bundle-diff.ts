@@ -24,6 +24,7 @@ import { sameValue } from './equal.js'
 import { mergeFlowGraph } from './merge-graph.js'
 import type { BundleDiff, DiffEntry, MergedGraph } from './types.js'
 import {
+  appendPolicyLabel,
   beforeAfter,
   bindingRoleLabel,
   describeFieldRef,
@@ -637,6 +638,16 @@ function diffBindings(before: FlowDef, after: FlowDef, tables: Registry, add: Ad
         change: 'changed',
         where,
         summary: `「${label(next)}」を直せる人の条件が変わります`,
+        ref,
+      })
+    }
+    if (old.appendBy !== next.appendBy) {
+      add({
+        kind: 'binding.appendBy',
+        change: 'changed',
+        where,
+        summary: `「${label(next)}」に書ける人が変わります`,
+        detail: beforeAfter(appendPolicyLabel(old.appendBy), appendPolicyLabel(next.appendBy)),
         ref,
       })
     }

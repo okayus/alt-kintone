@@ -19,6 +19,7 @@ import {
   company,
   contact,
   deal,
+  dealMessage,
   employee,
 } from './tables/index.js'
 
@@ -32,6 +33,7 @@ export const tables = registry(
   company,
   contact,
   deal,
+  dealMessage,
   activity,
   employee,
   changeRequest,

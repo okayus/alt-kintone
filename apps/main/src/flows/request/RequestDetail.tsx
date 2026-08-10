@@ -161,6 +161,7 @@ export function RequestDetail({
         requestId={record.id}
         meId={meId}
         nameOf={nameOf}
+        asOf={asOf}
         onError={onError}
         // 書き込むと出口条件「起票者に返信した」が自動で充足に変わる。読み直して反映する
         onPosted={() => setGeneration((value) => value + 1)}

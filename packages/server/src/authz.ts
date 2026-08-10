@@ -98,7 +98,9 @@ export function authenticate(
  *
  *  - admin    … 特別ロール。行レベルも遷移も制限をバイパスする
  *  - operator … どれかのステップの担当。読み書きする
- *  - viewer   … `flow.viewers` に居る。**読むだけ**（管理職・監査役）
+ *  - viewer   … `flow.viewers` に居る。**業務を進めない**（管理職・監査役）。
+ *               読むのが基本で、**`appendBy: 'participants'` を宣言したテーブルへの
+ *               追記だけできる**（フェーズ11 決定A）。更新・遷移・手動チェックは不可
  *  - none     … 参加していない。403
  *
  * viewer を `access` に落として表現しない（＝ viewer のとき usage.access を read に
@@ -139,9 +141,26 @@ export function requireParticipation(principal: Principal, flow: FlowDef): Parti
 export function requireOperator(kind: Participation, operation: string): void {
   if (kind !== 'viewer') return
   throw forbidden(
-    `${operation} は閲覧のみの立場ではできない`,
-    'このロールはフロー定義の viewers に居る（読み取り専用）。書けるのは担当ロールと管理者',
+    `${operation} は業務を進めない立場ではできない`,
+    'このロールはフロー定義の viewers に居る。できるのは読むことと、' +
+      'バインドが appendBy: "participants" を宣言したテーブルへの追記だけ',
   )
+}
+
+/**
+ * 新規作成の入口（フェーズ11 決定A）。
+ *
+ * **バインドが `appendBy: 'participants'` を宣言したテーブルだけ viewer に開く。**
+ * 宣言はバインディング（＝そのフローとそのテーブルの関係）に付いているので、
+ * 「viewer は読むだけ」という**人の側の一般定義を変えずに**、テーブル1つぶんの
+ * 例外として書ける。参加の種類を5つに増やす案（論点H の H3）を採らなかった理由。
+ *
+ * ⚠ 開けるのは create だけ。`PATCH` / `advance` / `checks` は `requireOperator` のまま
+ * — 追記の場（やりとり）と、業務を進める操作は別のもの。
+ */
+export function requireCreate(kind: Participation, usage: TableUsage): void {
+  if (usage.binding?.appendBy === 'participants') return
+  requireOperator(kind, 'レコードの作成')
 }
 
 /**

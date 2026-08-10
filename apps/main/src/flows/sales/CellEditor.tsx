@@ -13,7 +13,7 @@
  */
 import type { FieldDef } from '@alt/dsl'
 import { useEffect, useRef, type KeyboardEvent } from 'react'
-import { isImeKey } from './cellEdit'
+import { isImeKey } from '../../shell/keys'
 
 /** 確定後にフォーカスが移る先。Enter = 下 / Tab = 右 / Shift+Tab = 左 / blur = 移動なし。 */
 export type CommitMove = 'down' | 'right' | 'left' | null

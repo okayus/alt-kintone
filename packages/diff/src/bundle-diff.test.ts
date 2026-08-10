@@ -276,6 +276,25 @@ describe('業務フローの変化', () => {
     )
   })
 
+  /**
+   * フェーズ11 決定A。**足さないと、この項目だけが変わったときに何も出ない**
+   * （バインドの差分は項目ごとに書いてあるので、網から落ちる）。
+   * 認可の変化が黙って適用されるのは、差分の目的からいちばん遠い。
+   */
+  it('追記できる人の変化が、権限の言葉ではなく業務の言葉で出る', () => {
+    const entry = only(
+      edited((draft) => {
+        const binding = draft.flows[0]?.bindings[0]
+        if (binding !== undefined) binding.appendBy = 'participants'
+      }),
+    )
+    expect(entry?.kind).toBe('binding.appendBy')
+    expect(entry?.summary).toBe('「案件」に書ける人が変わります')
+    expect(entry?.detail).toBe(
+      '「担当者と管理者だけ」→「この業務に関わる人みんな（見るだけの人も）」',
+    )
+  })
+
   it('担当ロールの変化はロール名で出る', () => {
     const diff = diffBundles(
       applied,

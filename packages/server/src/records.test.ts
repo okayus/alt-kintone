@@ -141,6 +141,33 @@ describe('更新（閉じて INSERT）', () => {
     expect(response.status).toBe(400)
   })
 
+  /**
+   * フェーズ11 の動作確認で見つけた欠陥。**`POST` は `as_of` を弾いていなかった**ので、
+   * 行は現在に対して作られたのに、返すための読み直しが `as_of` 時点（＝まだ無い）
+   * を見て 404 になっていた ＝ **書けたのに失敗と返る**。
+   *
+   * フェーズ8 の「POST だけ守りが1枚少ない」と同じ形（既存行を前提にした守りは、
+   * 行がまだ無い操作をすり抜ける）なので、回帰テストにする。
+   */
+  it('as_of を付けた作成は、行を作らずに 400 で断る', () => {
+    const f = fixture()
+    const before = records(f.request('GET', '/api/deal?flow=sales')).length
+
+    const response = f.request('POST', '/api/deal?flow=sales&as_of=2026-07-10T00:00:00.000Z', {
+      body: {
+        companyId: 'co-1',
+        title: '過去に作る',
+        productType: 'meo',
+        dealType: 'new',
+        status: 'open',
+        ownerEmployeeId: 'e-yamada',
+      },
+    })
+    expect(response.status).toBe(400)
+    // **入っていないこと**が本題（404 を返しつつ書かれているのが元の壊れ方）
+    expect(records(f.request('GET', '/api/deal?flow=sales')).length).toBe(before)
+  })
+
   it('空の body は 400（何も起きない更新を通さない）', () => {
     const response = fixture().request('PATCH', '/api/deal/d-1?flow=sales', { body: {} })
     expect(response.status).toBe(400)

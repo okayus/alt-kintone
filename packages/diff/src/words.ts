@@ -38,6 +38,15 @@ const BINDING_ROLES: Record<string, string> = {
 
 export const bindingRoleLabel = (role: string): string => BINDING_ROLES[role] ?? role
 
+/** 誰が追記できるか（フェーズ11 決定A）。書かれていなければ `operators`。 */
+const APPEND_POLICIES: Record<string, string> = {
+  operators: '担当者と管理者だけ',
+  participants: 'この業務に関わる人みんな（見るだけの人も）',
+}
+
+export const appendPolicyLabel = (policy: string | undefined): string =>
+  APPEND_POLICIES[policy ?? 'operators'] ?? policy ?? 'operators'
+
 /**
  * 項目の性格を1語で。「文字・任意」「選択・必須」「案件への参照」。
  *

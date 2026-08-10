@@ -23,7 +23,7 @@
  * `<table>` ではなく div + CSS グリッドなのは、仮想化した行を絶対配置するため。
  * `role="grid"` は最小限だけ付ける（PC中心・社内利用の決定に従う）。
  */
-import { deal as dealDef, sales } from '@alt/definitions'
+import { deal as dealDef, roles, sales } from '@alt/definitions'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   useEffect,
@@ -675,11 +675,19 @@ function ownedByOther(deal: Deal, screen: ScreenProps): string {
   )
   const me = self?.name ?? screen.user
 
-  // 閲覧のみの立場（フロー定義の viewers）は、担当かどうかに関係なく全行が編集不可。
+  // 読む立場（フロー定義の viewers）は、担当かどうかに関係なく全行が編集不可。
   // 「担当が違うから」と説明すると嘘になる（自分が担当の案件でも編集できない）。
   // ⚠ 可否を決めているのは `_permissions`（サーバ）で、ここは**説明の出し分けだけ**。
   if (self !== undefined && (sales.viewers ?? []).includes(self.role)) {
-    return `${me} は この業務を見るだけの立場（営業マネージャーなど）。編集できるのは案件の担当者と管理者`
+    // 役割は定義から引く。viewers が3ロールになった（フェーズ11 決定C）ので、
+    // 「営業マネージャーなど」と決め打ちすると制作担当に嘘を言うことになる
+    const role = roles.find((candidate) => candidate.key === self.role)?.name ?? self.role
+    return (
+      `${me}（${role}）は この業務を読む立場。案件を直せるのは担当者と管理者だけ` +
+      // 決定S は「なぜ効かないか」だけでなく**代わりに何ができるか**まで出す方が効く。
+      // viewers はやりとりには書ける（決定A）ので、意見の置き場は実際にある
+      '（案件のやりとりには書ける）'
+    )
   }
 
   const owner = screen.masters.employees.get(deal.ownerEmployeeId)?.name ?? '別の担当者'
