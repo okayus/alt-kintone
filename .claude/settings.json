@@ -1,4 +1,11 @@
 {
+"permissions": {
+  "allow": [
+    "Bash(docker compose exec dev pnpm *)",
+    "Bash(docker compose exec -d dev pnpm *)",
+    "Bash(docker compose ps *)"
+  ]
+},
   "hooks": {
     "PostToolUse": [
       {
