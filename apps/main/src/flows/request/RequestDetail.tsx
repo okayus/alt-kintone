@@ -83,72 +83,87 @@ export function RequestDetail({
   const flow = record._flow
 
   return (
-    <article className="request-detail">
-      <p className="crumb">
-        <a href={href.requests()}>← 要望の一覧</a>
-      </p>
-
-      <header className="request-head">
-        <p className="muted">
-          {label(requestDef.fields.kind, record.kind)} / {nameOf(record.reporterEmployeeId)} が{' '}
-          {dateTime(record.filedAt)} に起票
+    // 本文（対象・変更案・対応）とサイドパネル（やりとり）。
+    // **変更案を見ながら返事を書ける**のが、この画面でパネルにした動機（フェーズ13 §4-3）
+    <>
+      <article className="request-detail">
+        <p className="crumb">
+          <a href={href.requests()}>← 要望の一覧</a>
         </p>
-        <h2>{record.problem}</h2>
-        {record.wish !== null && (
-          <p className="request-wish">
-            <span className="muted">{fieldLabel(requestDef, 'wish')}:</span> {record.wish}
+
+        <header className="request-head">
+          <p className="muted">
+            {label(requestDef.fields.kind, record.kind)} / {nameOf(record.reporterEmployeeId)} が{' '}
+            {dateTime(record.filedAt)} に起票
           </p>
+          <h2>{record.problem}</h2>
+          {record.wish !== null && (
+            <p className="request-wish">
+              <span className="muted">{fieldLabel(requestDef, 'wish')}:</span> {record.wish}
+            </p>
+          )}
+        </header>
+
+        {flow !== null && (
+          <section className="flow-panel">
+            <p className="flow-panel-link">
+              <a href={href.flow(flow.flow, flow.step)}>この業務の流れを見る →</a>
+            </p>
+            <StepTrack flow={flow} />
+
+            <ExitChecklist
+              flow={flow}
+              permissions={record._permissions}
+              busy={busy}
+              nameOf={nameOf}
+              onToggle={(key, checked) =>
+                mutate(() =>
+                  client.setCheck<ChangeRequest>('change_request', record.id, key, checked),
+                )
+              }
+            />
+
+            <AdvanceButtons
+              flow={flow}
+              permissions={record._permissions}
+              busy={busy}
+              onAdvance={(to) =>
+                mutate(async () => {
+                  const result = await client.advance<ChangeRequest>(
+                    'change_request',
+                    record.id,
+                    to,
+                  )
+                  setNotice(advanceNotice(flow.flow, to, result.unmet))
+                  return result.record
+                })
+              }
+            />
+            {notice !== null && <p className="app-banner app-banner-info">{notice}</p>}
+          </section>
         )}
-      </header>
 
-      {flow !== null && (
-        <section className="flow-panel">
-          <p className="flow-panel-link">
-            <a href={href.flow(flow.flow, flow.step)}>この業務の流れを見る →</a>
-          </p>
-          <StepTrack flow={flow} />
+        <Target record={record} />
 
-          <ExitChecklist
-            flow={flow}
-            permissions={record._permissions}
-            busy={busy}
-            nameOf={nameOf}
-            onToggle={(key, checked) =>
-              mutate(() =>
-                client.setCheck<ChangeRequest>('change_request', record.id, key, checked),
-              )
-            }
-          />
+        {/* 対応者が `alt diff --request` で添えたときだけ出る（フェーズ10 決定D） */}
+        {record.proposal !== null && <RequestProposal proposal={record.proposal} />}
 
-          <AdvanceButtons
-            flow={flow}
-            permissions={record._permissions}
-            busy={busy}
-            onAdvance={(to) =>
-              mutate(async () => {
-                const result = await client.advance<ChangeRequest>('change_request', record.id, to)
-                setNotice(advanceNotice(flow.flow, to, result.unmet))
-                return result.record
-              })
-            }
-          />
-          {notice !== null && <p className="app-banner app-banner-info">{notice}</p>}
-        </section>
-      )}
+        <Handling
+          record={record}
+          busy={busy}
+          employees={[...masters.employees.values()]}
+          onSave={(patch) =>
+            mutate(() => client.patch<ChangeRequest>('change_request', record.id, patch))
+          }
+        />
 
-      <Target record={record} />
-
-      {/* 対応者が `alt diff --request` で添えたときだけ出る（フェーズ10 決定D） */}
-      {record.proposal !== null && <RequestProposal proposal={record.proposal} />}
-
-      <Handling
-        record={record}
-        busy={busy}
-        employees={[...masters.employees.values()]}
-        onSave={(patch) =>
-          mutate(() => client.patch<ChangeRequest>('change_request', record.id, patch))
-        }
-      />
+        <footer className="deal-version">
+          最終更新 {dateTime(record._version.validFrom)} / {nameOf(record._version.changedBy)}
+          {record._version.changedStep !== null && (
+            <>（{stepNameOf('request', record._version.changedStep)} で変更）</>
+          )}
+        </footer>
+      </article>
 
       <RequestChat
         client={client}
@@ -162,14 +177,7 @@ export function RequestDetail({
         // （フェーズ12: 読み直しの合図だった `generation` state がこれ1行になった）
         onPosted={() => void queries.invalidateQueries({ queryKey: recordKey })}
       />
-
-      <footer className="deal-version">
-        最終更新 {dateTime(record._version.validFrom)} / {nameOf(record._version.changedBy)}
-        {record._version.changedStep !== null && (
-          <>（{stepNameOf('request', record._version.changedStep)} で変更）</>
-        )}
-      </footer>
-    </article>
+    </>
   )
 }
 

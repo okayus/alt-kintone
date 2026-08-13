@@ -67,6 +67,34 @@ function render(opts: RenderOptions = {}): void {
   )
 }
 
+/**
+ * サイドパネルの中に置いた状態で描く（フェーズ13）。**上の `render` は触らない** —
+ * フェーズ11 の4群がそのままの経路で通ることを、パネル化の匂い検知に使っている
+ * （phase-13 完了条件10）。
+ */
+function renderInPanel(messages: readonly ChatMessage[], hidden: boolean): void {
+  if (root === undefined) {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+  }
+  root.render(
+    <StrictMode>
+      <div style={{ display: hidden ? 'none' : 'block' }}>
+        <ChatPanel
+          title="やりとり"
+          messages={messages}
+          meId={ME}
+          nameOf={nameOf}
+          onPost={() => Promise.resolve()}
+          canPost={true}
+          visible={!hidden}
+        />
+      </div>
+    </StrictMode>,
+  )
+}
+
 afterEach(() => {
   root?.unmount()
   root = undefined
@@ -207,6 +235,41 @@ describe('送信のキー（完了条件3）', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(textarea().value).toBe('消えないで')
+  })
+})
+
+describe('隠れている間に届いたぶん（フェーズ13 決定C）', () => {
+  const many = Array.from({ length: 40 }, (_, i) => message(i, 'e-suzuki'))
+
+  it('閉じている間に増えても、開いた瞬間に最新が見えている', async () => {
+    renderInPanel(many, false)
+    await expect.poll(atBottom).toBe(true)
+
+    // 閉じる（外さない — ポーリングは生きたまま）
+    renderInPanel(many, true)
+    await scrollSettled()
+    // ⚠ 隠れている間は scrollHeight が 0 なので、ここでの追随は空振りする
+    renderInPanel([...many, message(99, 'e-suzuki')], true)
+    await scrollSettled()
+
+    // 開く。**ここで最下部に戻っていること**が本題
+    renderInPanel([...many, message(99, 'e-suzuki')], false)
+    await expect.poll(atBottom).toBe(true)
+    expect(jumpButton()).toBeNull()
+  })
+
+  it('上を読んでいる最中に閉じたなら、開いても位置は変わらない', async () => {
+    renderInPanel(many, false)
+    await expect.poll(atBottom).toBe(true)
+    log().scrollTop = 0
+    await scrollSettled()
+
+    renderInPanel(many, true)
+    await scrollSettled()
+    renderInPanel(many, false)
+    await scrollSettled()
+
+    expect(log().scrollTop).toBe(0)
   })
 })
 

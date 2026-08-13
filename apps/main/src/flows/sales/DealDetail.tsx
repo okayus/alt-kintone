@@ -96,132 +96,133 @@ export function DealDetail({
   const company = masters.companies.get(deal.companyId)
 
   return (
-    <article className="deal-detail">
-      <p className="crumb">
-        <a href={href.deals()}>← 案件一覧</a>
-      </p>
-
-      <header className="deal-head">
-        <h2>{deal.title}</h2>
-        <p className="muted">
-          {orDash(company?.name)} / {label(dealDef.fields.productType, deal.productType)} /{' '}
-          {label(dealDef.fields.dealType, deal.dealType)} / 状態{' '}
-          {label(dealDef.fields.status, deal.status)}
-          {deal.confidence !== null && (
-            <> / ヨミ {label(dealDef.fields.confidence, deal.confidence)}</>
-          )}
+    // 本文とサイドパネル（フェーズ13 決定A）。**パネルは詳細画面の中**に置く
+    // （決定H）— やりとりはレコード1件に紐づくので、画面をまたいで持ち回るものが無い。
+    // 案件を移れば remount され、スクロール・追随・件数の基準が今までと同じ理屈で戻る
+    <>
+      <article className="deal-detail">
+        <p className="crumb">
+          <a href={href.deals()}>← 案件一覧</a>
         </p>
-      </header>
 
-      {flow === null ? (
-        <p className="muted">この案件は業務フローに乗っていない。</p>
-      ) : (
-        <section className="flow-panel">
-          <p className="flow-panel-link">
-            {/* 全体像・他ステップの条件・遷移の可能性は参照画面で（フェーズ5） */}
-            <a href={href.flow(sales.key, flow.step)}>フロー全体を見る →</a>
+        <header className="deal-head">
+          <h2>{deal.title}</h2>
+          <p className="muted">
+            {orDash(company?.name)} / {label(dealDef.fields.productType, deal.productType)} /{' '}
+            {label(dealDef.fields.dealType, deal.dealType)} / 状態{' '}
+            {label(dealDef.fields.status, deal.status)}
+            {deal.confidence !== null && (
+              <> / ヨミ {label(dealDef.fields.confidence, deal.confidence)}</>
+            )}
           </p>
-          <StepTrack flow={flow} />
+        </header>
 
-          <ExitChecklist
-            flow={flow}
-            permissions={deal._permissions}
-            busy={busy}
-            nameOf={nameOf}
-            onToggle={(key, checked) =>
-              mutate(() => client.setCheck<Deal>('deal', deal.id, key, checked))
-            }
-          />
-
-          <AdvanceButtons
-            flow={flow}
-            permissions={deal._permissions}
-            busy={busy}
-            onAdvance={(to) =>
-              mutate(
-                async () => {
-                  const result = await client.advance<Deal>('deal', deal.id, to)
-                  setNotice(advanceNotice(to, result.unmet))
-                  return result.record
-                },
-                // ステップが変わるとフォームの前提（決着理由など）も変わるので閉じる
-                () => setEditing(false),
-              )
-            }
-          />
-
-          {notice !== null && <p className="app-banner app-banner-info">{notice}</p>}
-        </section>
-      )}
-
-      <section className="deal-body">
-        <div className="section-head">
-          <h3>案件の内容</h3>
-          {!editing && deal._permissions.update && (
-            <button type="button" onClick={() => setEditing(true)}>
-              編集
-            </button>
-          )}
-          {!deal._permissions.update && (
-            <span className="muted">
-              {asOf === undefined
-                ? '自分が担当の案件ではないので編集できない'
-                : '過去の時点は読み取り専用'}
-            </span>
-          )}
-        </div>
-
-        {editing ? (
-          <DealForm
-            deal={deal}
-            busy={busy}
-            onCancel={() => setEditing(false)}
-            onSave={(patch: DealPatch) =>
-              mutate(
-                () => client.patch<Deal>('deal', deal.id, patch),
-                () => setEditing(false),
-              )
-            }
-          />
+        {flow === null ? (
+          <p className="muted">この案件は業務フローに乗っていない。</p>
         ) : (
-          <DealFacts deal={deal} owner={nameOf(deal.ownerEmployeeId)} />
-        )}
-      </section>
+          <section className="flow-panel">
+            <p className="flow-panel-link">
+              {/* 全体像・他ステップの条件・遷移の可能性は参照画面で（フェーズ5） */}
+              <a href={href.flow(sales.key, flow.step)}>フロー全体を見る →</a>
+            </p>
+            <StepTrack flow={flow} />
 
-      <section className="deal-body">
-        <h3>活動</h3>
-        <p className="muted section-note">顧客との接触の記録。出口条件の自動判定が読んでいる。</p>
-        <ActivityList activities={activities} nameOf={nameOf} />
-      </section>
+            <ExitChecklist
+              flow={flow}
+              permissions={deal._permissions}
+              busy={busy}
+              nameOf={nameOf}
+              onToggle={(key, checked) =>
+                mutate(() => client.setCheck<Deal>('deal', deal.id, key, checked))
+              }
+            />
+
+            <AdvanceButtons
+              flow={flow}
+              permissions={deal._permissions}
+              busy={busy}
+              onAdvance={(to) =>
+                mutate(
+                  async () => {
+                    const result = await client.advance<Deal>('deal', deal.id, to)
+                    setNotice(advanceNotice(to, result.unmet))
+                    return result.record
+                  },
+                  // ステップが変わるとフォームの前提（決着理由など）も変わるので閉じる
+                  () => setEditing(false),
+                )
+              }
+            />
+
+            {notice !== null && <p className="app-banner app-banner-info">{notice}</p>}
+          </section>
+        )}
+
+        <section className="deal-body">
+          <div className="section-head">
+            <h3>案件の内容</h3>
+            {!editing && deal._permissions.update && (
+              <button type="button" onClick={() => setEditing(true)}>
+                編集
+              </button>
+            )}
+            {!deal._permissions.update && (
+              <span className="muted">
+                {asOf === undefined
+                  ? '自分が担当の案件ではないので編集できない'
+                  : '過去の時点は読み取り専用'}
+              </span>
+            )}
+          </div>
+
+          {editing ? (
+            <DealForm
+              deal={deal}
+              busy={busy}
+              onCancel={() => setEditing(false)}
+              onSave={(patch: DealPatch) =>
+                mutate(
+                  () => client.patch<Deal>('deal', deal.id, patch),
+                  () => setEditing(false),
+                )
+              }
+            />
+          ) : (
+            <DealFacts deal={deal} owner={nameOf(deal.ownerEmployeeId)} />
+          )}
+        </section>
+
+        <section className="deal-body">
+          <h3>活動</h3>
+          <p className="muted section-note">顧客との接触の記録。出口条件の自動判定が読んでいる。</p>
+          <ActivityList activities={activities} nameOf={nameOf} />
+        </section>
+
+        <footer className="deal-version">
+          最終更新 {dateTime(deal._version.validFrom)} / {nameOf(deal._version.changedBy)}
+          {deal._version.changedStep !== null && (
+            <>（{stepName(deal._version.changedStep)} で変更）</>
+          )}
+          {deal._version.changedFlow !== null && <> / フロー {deal._version.changedFlow}</>}
+        </footer>
+      </article>
 
       {/*
-        社内のやりとり（フェーズ11）。**活動とは別区画**にするのが v1 の手当そのもの
+        社内のやりとり（フェーズ11）。**活動とは別**にするのが v1 の手当そのもの
         （論点F）— 接触の報告がこちらに流れると、活動が書かれなくなって
-        自動判定が充足しなくなる。区画と説明文で言葉の区別を保つ。
+        自動判定が充足しなくなる。フェーズ13 で場所が最下部からサイドに移り、
+        区別を持たせるのは**言葉だけ**になった（決定E）。パネルは `DealChat` が持つ
       */}
-      <section className="deal-body">
-        <p className="muted section-note">
-          案件についての社内の相談・指示・引き継ぎ。顧客には見えない。
-        </p>
-        <DealChat
-          client={client}
-          dealId={deal.id}
-          meId={meId}
-          user={user}
-          nameOf={nameOf}
-          asOf={asOf}
-          onError={onError}
-        />
-      </section>
-
-      <footer className="deal-version">
-        最終更新 {dateTime(deal._version.validFrom)} / {nameOf(deal._version.changedBy)}
-        {deal._version.changedStep !== null && (
-          <>（{stepName(deal._version.changedStep)} で変更）</>
-        )}
-        {deal._version.changedFlow !== null && <> / フロー {deal._version.changedFlow}</>}
-      </footer>
-    </article>
+      <DealChat
+        client={client}
+        dealId={deal.id}
+        meId={meId}
+        user={user}
+        nameOf={nameOf}
+        asOf={asOf}
+        onError={onError}
+      />
+    </>
   )
 }
 

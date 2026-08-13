@@ -82,6 +82,15 @@ textarea {
 
 /* --- シェル ------------------------------------------------------------- */
 
+/*
+ * サイドパネルのぶんシェル全体を詰める（フェーズ13 決定A の push）。
+ * パネルは viewport に貼り付く（fixed）ので、ここで空けないと上部の操作が下に潜る。
+ * 値を入れるのは `shell/panel/SidePanel.tsx` だけ。
+ */
+.app {
+  padding-right: var(--side-panel-gutter, 0);
+}
+
 .app-header {
   display: flex;
   gap: 16px;
@@ -1199,7 +1208,8 @@ tbody tr:last-child td {
   margin: 0 0 12px;
 }
 
-/* 高さを固定して枠の中でスクロールさせる（論点A）。画面が伸び続けない */
+/* 高さを固定して枠の中でスクロールさせる（論点A）。画面が伸び続けない。
+   ⚠ パネルの中では「残り全部」に変わる（フェーズ13。下の .side-panel .chat-log） */
 .chat-log {
   display: flex;
   flex-direction: column;
@@ -1263,4 +1273,132 @@ tbody tr:last-child td {
 .chat-form textarea {
   flex: 1;
   max-width: 640px;
+}
+
+/* --- サイドパネル（フェーズ13。決定A・F・G） ----------------------------- */
+
+/*
+ * viewport の右端に貼り付く（決定A）。**覆うのではなく詰める**ので、シェル全体が
+ * パネルのぶん狭くなる（`.app` の padding-right ＝ `--side-panel-gutter`）。
+ * `.app-main` は `max-width: 1100px` のままなので、**広い画面では余白が減るだけで
+ * 本文の幅は動かない**。狭い画面でだけ本文が縮む
+ */
+.side-panel-root {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  padding: 8px 8px 8px 0;
+}
+
+/* 閉じているときは取っ手のぶんだけ。下まで伸ばすと本文の上に透明な板が乗る */
+.side-panel-root[data-open='false'] {
+  bottom: auto;
+}
+
+/* 閉じている間も children はマウントしたまま（決定C）。隠すのは見た目だけ */
+.side-panel-root[data-open='false'] .side-panel,
+.side-panel-root[data-open='false'] .side-panel-handle {
+  display: none;
+}
+
+.side-panel-handle {
+  flex: none;
+  width: 8px;
+  margin-right: 2px;
+  border-radius: 4px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.side-panel-handle:hover,
+body.panel-resizing .side-panel-handle {
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+/* ドラッグ中に本文の文字を選ばせない */
+body.panel-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.side-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.side-panel-head {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px 0;
+}
+
+.side-panel-close {
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.side-panel-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 14px 12px;
+}
+
+/* パネルの中では高さ固定をやめて、残りを全部やりとりに使う */
+.side-panel .chat-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+
+.side-panel .chat-log-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.side-panel .chat-log {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  padding-right: 4px;
+}
+
+/* 閉じているときの取っ手。件数は**未読ではなく**閉じてから増えたぶん（決定C） */
+.side-panel-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 4px;
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.side-panel-toggle-label {
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+}
+
+.badge-new {
+  background: var(--accent);
+  color: #fff;
 }

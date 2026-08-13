@@ -13,11 +13,16 @@
  * 取得・投稿・投稿後の読み直しだけ ＝ **このフローの事情**そのもの
  * （書くと出口条件 `replied` が動くので本体を読み直す、という判断は部品には持てない）。
  *
- * ⚠ 更新はポーリング（論点H）。開いている間だけ動かす。
+ * ⚠ 更新はポーリング（論点H）。画面を開いている間だけ動かす。
+ *
+ * フェーズ13 で置き場がサイドパネルになった（`DealChat` と同じ形）。
+ * **変更案（`RequestProposal`）を見ながら返事を書ける**のが、この画面での動機。
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MASTER_LIMIT, type Client } from '../../shell/api'
 import { ChatPanel } from '../../shell/chat/ChatPanel'
+import { SidePanel } from '../../shell/panel/SidePanel'
+import { useSidePanel } from '../../shell/panel/useSidePanel'
 import { keyOf } from '../../shell/query'
 import type { ChangeRequestMessage } from '../../shell/types'
 
@@ -49,6 +54,7 @@ export function RequestChat({
   onPosted,
 }: RequestChatProps) {
   const queries = useQueryClient()
+  const panel = useSidePanel('request')
   const key = keyOf(client, 'change_request_message', { user, asOf }, requestId)
 
   const messages = useQuery({
@@ -60,8 +66,11 @@ export function RequestChat({
         sort: 'postedAt:asc',
         ...(asOf === undefined ? {} : { asOf }),
       }),
-    // 開いている間だけ動く（画面を離れればクエリが非アクティブになって止まる）
+    // 画面を開いている間だけ動く（離れればクエリが非アクティブになって止まる）。
+    // ⚠ **パネルを閉じても止めない** — 閉じている間に増えたぶんを数えるため（決定C）
     refetchInterval: CHAT_POLL_MS,
+    // 見えていない機構のエラーで上部バナーを赤くしない（決定I）
+    meta: { silent: !panel.open },
   })
 
   const post = async (body: string): Promise<void> => {
@@ -84,16 +93,19 @@ export function RequestChat({
   }
 
   return (
-    <ChatPanel
-      title="やりとり"
-      messages={messages.data}
-      meId={meId}
-      nameOf={nameOf}
-      onPost={post}
-      canPost={asOf === undefined && meId !== ''}
-      cannotPostReason={
-        asOf === undefined ? '利用者が特定できていない。' : '過去の時点を見ている間は書けない。'
-      }
-    />
+    <SidePanel panel={panel} title="やりとり" count={messages.data?.length}>
+      <ChatPanel
+        title="やりとり"
+        messages={messages.data}
+        meId={meId}
+        nameOf={nameOf}
+        onPost={post}
+        canPost={asOf === undefined && meId !== ''}
+        cannotPostReason={
+          asOf === undefined ? '利用者が特定できていない。' : '過去の時点を見ている間は書けない。'
+        }
+        visible={panel.open}
+      />
+    </SidePanel>
   )
 }

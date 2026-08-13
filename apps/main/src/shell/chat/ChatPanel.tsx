@@ -45,6 +45,15 @@ export interface ChatPanelProps {
   canPost: boolean
   /** 書けない理由。**その場に言葉で出す**（フェーズ7 決定S の系譜）。 */
   cannotPostReason?: string
+  /**
+   * 見えているか（フェーズ13 決定C）。サイドパネルは閉じても**部品を外さない**
+   * （ポーリングを止めないため）ので、隠れている間がある。
+   *
+   * ⚠ `display: none` の間は `scrollHeight` が 0 なので、下の追随は空振りする。
+   *   **見えた瞬間に最下部へ戻す**のはここでしか扱えない。省略時は常に見えている
+   *   （フェーズ11 の使い方）。
+   */
+  visible?: boolean
 }
 
 /** 「最下部にいる」とみなす余裕（px）。行の端数や慣性スクロールのぶん。 */
@@ -58,6 +67,7 @@ export function ChatPanel({
   onPost,
   canPost,
   cannotPostReason,
+  visible = true,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -87,6 +97,19 @@ export function ChatPanel({
     }
     setUnseen(count - seen.current)
   }, [count])
+
+  /**
+   * 隠れている間に届いたぶんへの追随（フェーズ13 決定C）。上の効果は隠れている間も
+   * 走るが、`scrollHeight` が 0 なので**位置は動いていない**。見えた時点でやり直す。
+   *
+   * 上を読んでいる最中に閉じた人はそのままにする（`stick` が false）— 読んでいた
+   * 場所を失わない、という上と同じ約束。
+   */
+  useEffect(() => {
+    const log = logRef.current
+    if (!visible || log === null || !stick.current) return
+    log.scrollTop = log.scrollHeight
+  }, [visible])
 
   const onScroll = (): void => {
     const log = logRef.current

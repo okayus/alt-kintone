@@ -12,10 +12,17 @@
  *
  * ⚠ `onPosted` が無い。v1 では `deal_message` を読む出口条件を作っていないので、
  *   書いても案件本体の判定は動かない（＝読み直すものが無い）。
+ *
+ * フェーズ13 で置き場がページ最下部から**サイドパネル**に変わった。パネルを持つのは
+ * ここ（詳細画面ではない）で、理由は取得と同じ場所に置くと配線が1つも増えないから
+ * — 閉じている間の `silent`（決定I）も、トグルに出す件数（決定C）も、この画面の
+ * クエリを見ている。**`SidePanel` はチャットを知らない**（決定G）ので依存は片方向。
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MASTER_LIMIT, type Client } from '../../shell/api'
 import { ChatPanel } from '../../shell/chat/ChatPanel'
+import { SidePanel } from '../../shell/panel/SidePanel'
+import { useSidePanel } from '../../shell/panel/useSidePanel'
 import { keyOf } from '../../shell/query'
 import type { DealMessage } from '../../shell/types'
 
@@ -36,6 +43,7 @@ export interface DealChatProps {
 
 export function DealChat({ client, dealId, meId, user, nameOf, asOf, onError }: DealChatProps) {
   const queries = useQueryClient()
+  const panel = useSidePanel('deal')
   const key = keyOf(client, 'deal_message', { user, asOf }, dealId)
 
   const messages = useQuery({
@@ -48,6 +56,9 @@ export function DealChat({ client, dealId, meId, user, nameOf, asOf, onError }: 
         ...(asOf === undefined ? {} : { asOf }),
       }),
     refetchInterval: DEAL_CHAT_POLL_MS,
+    // 閉じている間の失敗で上部バナーを赤くしない（決定I）。実害は件数が止まることだけで、
+    // 開けば従来どおり出る。見えていない機構のエラーで画面を騒がせない
+    meta: { silent: !panel.open },
   })
 
   const post = async (body: string): Promise<void> => {
@@ -67,18 +78,30 @@ export function DealChat({ client, dealId, meId, user, nameOf, asOf, onError }: 
   }
 
   return (
-    <ChatPanel
-      title="やりとり"
-      messages={messages.data}
-      meId={meId}
-      nameOf={nameOf}
-      onPost={post}
-      // 画面が開けている＝このフローの参加者で、追記は参加者全員に開いている（決定A）。
-      // だから可否を分けるのは時点だけ。レコードごとの可否ではないので `_permissions` に無い
-      canPost={asOf === undefined && meId !== ''}
-      cannotPostReason={
-        asOf === undefined ? '利用者が特定できていない。' : '過去の時点を見ている間は書けない。'
-      }
-    />
+    <SidePanel panel={panel} title="やりとり" count={messages.data?.length}>
+      {/*
+        活動（顧客との接触）との区別は**言葉だけで持たせる**（フェーズ11 論点F /
+        フェーズ13 決定E）。サイドに常駐すると「一番手軽な入力欄」が常にこれになるので、
+        言葉はパネルの中まで連れてくる。ズレは観測できるので、起きてから手当てする
+      */}
+      <p className="muted section-note">
+        案件についての社内の相談・指示・引き継ぎ。顧客には見えない。
+      </p>
+      <ChatPanel
+        title="やりとり"
+        messages={messages.data}
+        meId={meId}
+        nameOf={nameOf}
+        onPost={post}
+        // 画面が開けている＝このフローの参加者で、追記は参加者全員に開いている（決定A）。
+        // だから可否を分けるのは時点だけ。レコードごとの可否ではないので `_permissions` に無い
+        canPost={asOf === undefined && meId !== ''}
+        cannotPostReason={
+          asOf === undefined ? '利用者が特定できていない。' : '過去の時点を見ている間は書けない。'
+        }
+        // 閉じている間は scrollHeight が計れない（決定C ⚠）
+        visible={panel.open}
+      />
+    </SidePanel>
   )
 }
