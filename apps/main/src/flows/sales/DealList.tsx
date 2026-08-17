@@ -601,7 +601,7 @@ function Row({
   saving: ReadonlySet<string>
   onCell: (col: number, action: 'focus' | 'edit') => void
 }) {
-  const writable = deal !== undefined && deal._permissions.update
+  const writable = deal?._permissions.update === true
   const rowClass = [
     'grid-row',
     deal === undefined ? 'loading-row' : '',

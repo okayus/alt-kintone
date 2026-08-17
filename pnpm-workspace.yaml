@@ -2,10 +2,17 @@ packages:
   - "packages/*"
   - "apps/*"
 
+# pnpm 自身の版切り替え（package.json の packageManager を見て別の版を落とし、
+# 実行し直す動き）は止める。版は mise が持つ（mise.toml）ので、pnpm がそこに
+# 割り込むと「mise.toml に書いた版で動いていない」が静かに起きる。
+# pnpm 公式も、asdf / mise / Volta のような外部ツールが版を管理する場合は
+# これを推奨している。
+pmOnFail: ignore
+
 # pnpm 11 blocks dependency install/build scripts by default (supply-chain
 # hardening). Without this, the first `pnpm install` writes an unresolved
 # placeholder here and every later pnpm command fails until it's fixed by hand.
-#   esbuild        — used internally by vite-plus/tsx/vitest
+#   esbuild        — vitest / tsx が内部で使う（vite 8 は Rolldown なので vite 由来ではない）
 #   better-sqlite3 — compiles its SQLite bindings (needed once `alt apply`
 #                    runs against a local SQLite file; see docs/product-concept.md §4-0)
 #   playwright     — false: its postinstall only downloads browser binaries, which

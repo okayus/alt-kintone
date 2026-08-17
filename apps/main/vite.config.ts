@@ -1,11 +1,11 @@
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite-plus'
+import { defineConfig } from 'vitest/config'
 
-// ルートの vite.config.ts と同じ狙い。パッケージ間参照はソースを直接指す。
+// ルートの vitest.shared.ts と同じ狙い。パッケージ間参照はソースを直接指す。
 // これが無いと dev サーバーも vitest も workspace シンボリックリンク経由で
-// `dist/` のビルド済み成果物を読み、prebuild を忘れると古い定義のまま画面が動く。
+// パッケージの main を探しに行き、`@alt/*` は main を持たないのでその場で落ちる。
 //
 // ⚠ このアプリは `@alt/definitions` を**値として** import する（ステップ名と順序）。
 //    型だけでなく実行時にも解決されるので、alias は必須。
@@ -73,10 +73,5 @@ export default defineConfig({
         },
       },
     ],
-  },
-  // fmt は既存コードの流儀に合わせる（ルートの vite.config.ts と同じ）。
-  fmt: {
-    semi: false,
-    singleQuote: true,
   },
 })

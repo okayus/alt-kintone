@@ -23,7 +23,7 @@ const port = Number(process.env['PORT'] ?? DEFAULT_PORT)
 const raw = process.env['DATABASE_URL'] ?? 'data/alt.db'
 const dbPath = raw.startsWith('file:') ? raw.slice('file:'.length) : raw
 
-let registry
+let registry: ReturnType<typeof loadRegistry>
 try {
   registry = loadRegistry(JSON.parse(readFileSync(definitionsPath, 'utf8')))
 } catch (error) {

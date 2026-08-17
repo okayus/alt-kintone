@@ -2,20 +2,25 @@
 // パッケージを追加したときの「追記漏れ」を機械検知する。verify の先頭で走る。
 //
 // このリポジトリでは、パッケージを1つ足すたびに**4箇所**に同じことを書く必要がある。
-// どれも忘れても即座には壊れず、あとから静かに壊れる種類なので、人間（とAI）の記憶に
-// 任せずここで落とす。
+// どれも「そのうち直せばいい」で済まず、書き漏らすとその経路が丸ごと動かなくなるので、
+// 人間（とAI）の記憶に任せずここで落とす。
 //
 //   1. docker-compose.yml の匿名ボリューム
 //        bind mount（.:/app）が各パッケージの node_modules をホスト側の（空の）
 //        ディレクトリで覆い隠すため。忘れると「コンテナ内で依存が消える」
 //   2. 各パッケージの tsconfig.json の paths
-//        prebuild なしで typecheck するため。忘れると tsc が dist/ を見る
-//   3. vite.config.ts の resolve.alias
-//        vitest と dev サーバー用。**忘れると dist/ の古い成果物でテストが通る**（一番たちが悪い）
-//        packages/* はルートの vite.config.ts を読む。自前の vite.config.ts を持つ
+//        typecheck（tsc）用。忘れると `Cannot find module '@alt/xxx'`
+//   3. vitest.shared.ts の resolve.alias
+//        vitest と dev サーバー用。忘れると実行時に ERR_MODULE_NOT_FOUND
+//        packages/* はルートの vitest.shared.ts を読む。自前の vite.config.ts を持つ
 //        パッケージ（apps/*）はそちらが読まれるので、依存の alias もそちらに要る
 //   4. ルート package.json の tsx 起動に --tsconfig
-//        2 の paths を実行時にも効かせるため。忘れると alt が dist/ を読む
+//        2 の paths を実行時にも効かせるため。忘れると alt / serve が起動しない
+//
+// ⚠ この4つが「静かに壊れる」のではなく「その場で落ちる」ようになったのは、
+//    パッケージが dist を持たなくなったから（`main` / `exports` を外し、`vp pack` を
+//    やめた）。以前はどれを忘れても workspace のシンボリックリンク経由で dist/ の
+//    **古いビルド成果物**が読まれ、prebuild 忘れに気づけないまま通ってしまっていた。
 //
 // 依存は増やさない方針なので、YAML / JSONC / TS の読み取りは最小の自前パーサで済ませる。
 // 対応している書き方は各パーサのコメントに書いてある。
@@ -126,9 +131,11 @@ for (const pkg of packages) {
   if (missing.length > 0) {
     problems.push(
       `${file}: compilerOptions.paths に workspace 依存が足りません: ${missing.join(', ')}\n` +
-        'このままだと tsc が dist/ を見るので、prebuild を忘れた状態で typecheck が通ります。\n' +
+        "このままだと tsc が型を見つけられません（Cannot find module '@alt/...'）。\n" +
         missing
-          .map((dep) => `      "${dep}": ["../../packages/${dep.replace('@alt/', '')}/src/index.ts"]`)
+          .map(
+            (dep) => `      "${dep}": ["../../packages/${dep.replace('@alt/', '')}/src/index.ts"]`,
+          )
           .join('\n'),
     )
   }
@@ -140,11 +147,11 @@ for (const pkg of packages) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. vite.config.ts の resolve.alias
+// 3. vitest.shared.ts の resolve.alias
 // ---------------------------------------------------------------------------
 
 {
-  const declared = aliasesIn(read('vite.config.ts'))
+  const declared = aliasesIn(read('vitest.shared.ts'))
 
   // ルートが面倒を見るのは packages/* だけ。apps/* は誰からも import されないので
   // 自分の名前の alias は要らず、代わりに自分の vite.config.ts が読まれる（下）。
@@ -154,16 +161,18 @@ for (const pkg of packages) {
 
   if (missing.length > 0) {
     problems.push(
-      `vite.config.ts: resolve.alias に足りません: ${missing.join(', ')}\n` +
-        'これが無いと vitest が workspace シンボリックリンク経由で dist/ の**ビルド済み成果物**を読み、\n' +
-        'prebuild を忘れると「古いコードのままテストが通る」という一番たちの悪い壊れ方をします。\n' +
+      `vitest.shared.ts: resolve.alias に足りません: ${missing.join(', ')}\n` +
+        'これが無いと vitest は workspace シンボリックリンク経由でパッケージの main を探しますが、\n' +
+        '@alt/* は main を持たない（dist を作らない）ので ERR_MODULE_NOT_FOUND になります。\n' +
         missing
           .map((name) => `      '${name}': source('${name.replace('@alt/', '')}'),`)
           .join('\n'),
     )
   }
   if (stale.length > 0) {
-    notes.push(`vite.config.ts: 対応する workspace パッケージが無い alias があります: ${stale.join(', ')}`)
+    notes.push(
+      `vitest.shared.ts: 対応する workspace パッケージが無い alias があります: ${stale.join(', ')}`,
+    )
   }
 
   // 自前の vite.config.ts を持つパッケージは、そちらが最寄りの設定として読まれる。
@@ -179,10 +188,8 @@ for (const pkg of packages) {
     problems.push(
       `${file}: resolve.alias に workspace 依存が足りません: ${lacking.join(', ')}\n` +
         'このパッケージは自前の vite.config.ts を持つので、ルートの alias は効きません。\n' +
-        'このままだと dev サーバーもテストも dist/ の古い成果物を読みます。\n' +
-        lacking
-          .map((dep) => `      '${dep}': source('${dep.replace('@alt/', '')}'),`)
-          .join('\n'),
+        'このままだと dev サーバーもテストも起動しません（ERR_MODULE_NOT_FOUND）。\n' +
+        lacking.map((dep) => `      '${dep}': source('${dep.replace('@alt/', '')}'),`).join('\n'),
     )
   }
 }
@@ -198,7 +205,8 @@ for (const pkg of packages) {
     problems.push(
       `package.json: scripts.${name} が tsx を --tsconfig なしで起動しています。\n` +
         'tsx は --tsconfig を渡さないと tsconfig の paths を解釈せず、workspace シンボリックリンク経由で\n' +
-        'dist/ の古い成果物を読みます（vitest の alias と同じ罠）。\n' +
+        'パッケージの main を探しに行きます（vitest の alias と同じ経路）。@alt/* は main を持たないので\n' +
+        'その場で ERR_MODULE_NOT_FOUND になります。\n' +
         `      "${name}": "tsx --tsconfig <package>/tsconfig.json ${command.replace(/^.*tsx\s+/, '')}"`,
     )
   }
@@ -233,7 +241,7 @@ function pathsIn(source, file) {
   }
 }
 
-/** vite.config.ts の resolve.alias のキーを拾う。`'@alt/xxx': source('xxx'),` の形だけを見る。 */
+/** vitest / vite の設定から resolve.alias のキーを拾う。`'@alt/xxx': source('xxx'),` の形だけを見る。 */
 function aliasesIn(source) {
   return [...source.matchAll(/['"](@alt\/[\w-]+)['"]\s*:/g)].map((m) => m[1])
 }

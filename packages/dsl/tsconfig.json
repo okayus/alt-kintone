@@ -1,11 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // tsc は --noEmit の typecheck 専用で、実ビルドと型出力は tsdown
-    // (`vp pack --dts`) が dist に対して行う。packages/sql と設定を揃えている。
-    //
-    // なお `vp pack --dts` は型生成の副産物として src/index.d.ts を残す
-    // （tsconfig 側では抑止できなかった）。生成物なので .gitignore で除外している。
+    // tsc は typecheck 専用。このパッケージは dist を作らない（package.json に
+    // main / exports が無い）ので、参照はすべて paths と resolve.alias が
+    // src/index.ts を直接指す。packages/sql と設定を揃えている。
     "noEmit": true,
     "declaration": false,
     "declarationMap": false

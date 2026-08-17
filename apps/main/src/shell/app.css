@@ -24,12 +24,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Hiragino Sans',
-    'Noto Sans JP',
-    sans-serif;
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
   font-size: 14px;
   line-height: 1.6;
 }
@@ -1298,12 +1293,6 @@ tbody tr:last-child td {
   bottom: auto;
 }
 
-/* 閉じている間も children はマウントしたまま（決定C）。隠すのは見た目だけ */
-.side-panel-root[data-open='false'] .side-panel,
-.side-panel-root[data-open='false'] .side-panel-handle {
-  display: none;
-}
-
 .side-panel-handle {
   flex: none;
   width: 8px;
@@ -1335,6 +1324,14 @@ body.panel-resizing {
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* 閉じている間も children はマウントしたまま（決定C）。隠すのは見た目だけ。
+   .side-panel / .side-panel-handle の**後ろ**に置く — 詳細度が高い規則を先に書くと、
+   実際の勝ち負けは変わらないのに読み手（と lint）が順序から判断できなくなる */
+.side-panel-root[data-open='false'] .side-panel,
+.side-panel-root[data-open='false'] .side-panel-handle {
+  display: none;
 }
 
 .side-panel-head {

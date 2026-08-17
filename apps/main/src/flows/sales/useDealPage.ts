@@ -183,7 +183,9 @@ export function useDealPage(input: DealPageInput): DealPage {
   const take = (response: ListResponse<Deal> | undefined): void => {
     if (response === undefined || taken.current.has(response)) return
     taken.current.add(response)
-    response.records.forEach((record, i) => rows.current.map.set(response.offset + i, record))
+    response.records.forEach((record, i) => {
+      rows.current.map.set(response.offset + i, record)
+    })
   }
 
   take(head.data)

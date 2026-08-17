@@ -4,13 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
-    "build": "vp build",
+    "dev": "vite",
+    "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vp test run",
-    "lint": "vp lint -c ../../.oxlintrc.json --deny-warnings",
-    "fmt": "vp fmt",
-    "fmt:check": "vp fmt --check"
+    "test": "vitest run"
   },
   "dependencies": {
     "@alt/definitions": "workspace:*",
@@ -27,6 +24,8 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/browser-playwright": "4.1.10",
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "vite": "^8.2.1",
+    "vitest": "4.1.10"
   }
 }

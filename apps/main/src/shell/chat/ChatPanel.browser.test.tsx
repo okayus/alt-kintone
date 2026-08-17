@@ -193,7 +193,12 @@ describe('新着への追随（完了条件2）', () => {
 describe('送信のキー（完了条件3）', () => {
   it('Enter で送る / Shift+Enter は改行 / 変換確定の Enter では送らない', async () => {
     const posted: string[] = []
-    render({ onPost: (body) => (posted.push(body), Promise.resolve()) })
+    render({
+      onPost: (body) => {
+        posted.push(body)
+        return Promise.resolve()
+      },
+    })
     await shown('.chat-form textarea')
 
     await userEvent.click(textarea())

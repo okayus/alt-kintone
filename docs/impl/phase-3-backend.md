@@ -375,7 +375,8 @@ X-Dev-User: yamada@example.com     → employee を email で引く。無けれ�
   **`app.ts` は `auth/dev-user.ts` を import しない**（注入するのは `main.ts` だけ）。
   これが OIDC に置き換わる境界（§4-1「認証と認可の境界」）
 - 本番エントリを作るときは `auth/dev-user.ts` を import しなければコードごと落ちる
-  （`vp pack` はエントリからの到達可能性でバンドルする）
+  （バンドラはエントリからの到達可能性で削る。※ 2026-08-17 に `packages/*` のバンドルを
+  やめたので、現状この保証を与えているのは「import しない」こと自体だけ）
 
 ---
 

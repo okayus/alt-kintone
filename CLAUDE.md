@@ -4,9 +4,10 @@
 **最初の適用先**として、客先（求人広告・MEO営業会社）の kintone（CRM/SFA）置き換え提案を準備中。
 **このファイルはセッション横断のコンテキスト共有ハブ。作業の節目で必ず「状況サマリ」「次のアクション」を更新すること。**
 
-## 状況サマリ（最終更新: 2026-08-13、フェーズ13完了）
+## 状況サマリ（最終更新: 2026-08-17、フェーズ13完了 + 道具の入れ替え）
 
 - リポジトリ: https://github.com/okayus/alt-kintone （private）
+- **2026-08-17: 開発の道具を vite-plus（beta）から入れ替えた**（`mise` / `pnpm` ネイティブ / `Biome` / `vitest` 直叩き / `TypeScript 7`）。**アプリのコードは実質そのまま**（lint の指摘6件を直しただけ・491テスト通過）。詳細は下の「開発環境」
 - フェーズ: **実装（最小スコープ完了）**。構想・設計は決着済み
 - **実装セッションは `docs/implementation.md` から始める**（実装ハブ）
 - 現在地: **フェーズ13まで完了（2026-08-13）。業務フローが2本載り**、営業フローが動き、フローそのものも画面で読め、案件一覧は1万件をスプレッドシートライクに読み書きでき、マネージャーは全案件を閲覧のみで読め、**開発への改善要望が業務フローとして回り、その返事に「こう変わります」が業務の言葉で付き**、**案件に社内のやりとり（相談・指示・引き継ぎ）が載って制作・MEO運用が参加し**、**FEの取得は宣言（TanStack Query）になって手書きの並行制御が消え**、**やりとりは本文の隣のサイドパネルで読み書きできる**（`docs/impl/phase-*.md`）
@@ -137,12 +138,16 @@
 `../fullstack-monorepo` を参考にした Docker + TypeScript 構成。詳細は `README.md`。
 
 - **pnpm workspace**（`packages/*`, `apps/*`）+ TypeScript 7.0.2 + `tsconfig.base.json`（strict, NodeNext）
-- **vite-plus (`vp`)** で pack / test / lint / fmt を統一。テストは vitest、lint は oxlint
+- **道具（2026-08-17 に vite-plus から移行）**: **mise**（Node と pnpm の版。`mise.toml` が唯一の真実。`packageManager` は持たない・corepack も使わない）/ **Biome**（整形 + lint。`biome.jsonc`）/ **vitest**（`vitest.shared.ts`）/ **vite 8**（FE の dev・build）/ **tsx**（`alt`・`serve` の実行）。vite-plus が beta だったのが理由で、**入れ替えたのは道具だけで、コードの意味は変えていない**
+  - **`packages/*` は `dist` を作らない**（`main`/`types`/`exports` も持たない）。参照は paths / alias / `tsx --tsconfig` がソースを直接指す。**配線を書き漏らすとその場で `ERR_MODULE_NOT_FOUND`** になる（以前は `dist` の古い成果物が静かに読まれていた）
+  - **`biome.jsonc` は `.json` にしない** — Biome は `biome.json` 中の `//` コメントを**エラーにせず黙って既定設定へフォールバックする**（設定が効いていないことに気づけない）
+  - **Biome の recommended から4つ落としてある**（`useLiteralKeys` 235件 / `useExhaustiveDependencies`（決定Kの `resetKey` を壊す誤検知）/ `noNonNullAssertion` / a11y 15件）。理由は `biome.jsonc` に書いてある。**import の並べ替え（assist）は切ってある** — 入れると移行と無関係な84ファイルが並び替わるため、要るときに `"on"` + `pnpm fmt` 1回で足りる
+  - **`mise.toml` を書き換えたら `docker compose build`**（版はイメージのビルド時に固定される）。⚠ `/app/mise.toml` が信頼されていないと**エラーを出さずにイメージ側の Node へ黙って落ちる**（`Dockerfile` の `MISE_TRUSTED_CONFIG_PATHS`）
 - **`apps/main` のテストは2層**（2026-08-08）: unit（node・純関数）+ **browser（vitest browser mode、実 Chromium）**。`*.browser.test.tsx` が該当。Chromium は**イメージに apt で焼いてある**（playwright にDLさせない。`CHROMIUM_PATH` で差し替え可）。グリッドのキーボード配線のような「DOMフォーカスの所在が本体」の挙動はこの層に書く（README「ブラウザテスト」）
 - パッケージ: `@alt/dsl`（条件式AST・テーブル定義・フロー定義・ロール定義・定義バンドル・遷移グラフのレイアウト）、`@alt/sql`（AST→SQL変換・DDL。**Goに移植する部分**）、`@alt/diff`（定義バンドルの差分・合併グラフ。**CLIとFEが共有し、Goには移植しない**）、`@alt/definitions`（客先の定義そのもの。テーブル・営業フロー・ロール）、`@alt/cli`（`alt` コマンド）、`@alt/server`（REST API）、`@alt/main`（`apps/main`。エンドユーザーFE。React + Vite + **TanStack Query v5**。取得のキー規約は `shell/query.ts`）
-- **`alt` の起動は `pnpm alt <cmd>`**（`tsx --tsconfig packages/cli/tsconfig.json` 経由）。**`--tsconfig` は必須** — 落とすと tsx が `paths` を見ず `dist/` の古い成果物を読む（vitest の alias と同じ罠）
-- **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:wiring → fmt:check → typecheck → lint → test をまとめて実行）
-  - `check:wiring` は**パッケージ追加時の「4箇所」の追記漏れ**を機械検知する（下記）。`fmt:check` が前寄りなのは、整形ミスを40秒でなく2秒で返すため
+- **`alt` の起動は `pnpm alt <cmd>`**（`tsx --tsconfig packages/cli/tsconfig.json` 経由）。**`--tsconfig` は必須** — 落とすと tsx が `paths` を見ず、`main` を持たない `@alt/*` を解決できずに起動しない（vitest の alias と同じ経路）
+- **作業はコンテナ内**: `docker compose up -d` → **`docker compose exec dev pnpm verify`**（check:wiring → lint → typecheck → test をまとめて実行）
+  - `check:wiring` は**パッケージ追加時の「4箇所」の追記漏れ**を機械検知する（下記）。`lint`（= `biome ci`）は整形の検査も兼ねる（全体で 50ms なので、以前の `fmt:check` を前に出す理由は消えた）
   - フェーズの着手/完了は `/phase-start <N>` / `/phase-done <N>`（`docs/implementation.md` 参照）
   - `pnpm install` は compose の command が起動時に実行する
   - **ポートはホスト側でずらしてある**: API = `3100`（`pnpm serve`）、FE dev サーバー = `5273`（`pnpm dev`）。ホストの3000/5173は別プロジェクトのコンテナが使用中のため。**API と FE は別々に `exec -d` で上げる**（落ちたときにどちらが死んだか分かるように）
@@ -152,11 +157,10 @@
 - **パッケージを追加したら4箇所**（`pnpm check:wiring` が全部を検知して落とす。手で覚えなくてよい）:
   1. `docker-compose.yml` の匿名ボリューム
   2. そのパッケージの `tsconfig.json` の `paths`（tsc用）
-  3. `vite.config.ts` の `resolve.alias`（vitest・dev サーバー用）。**最寄りの vite.config が読まれる**ので、`apps/*` のように自前の設定を持つパッケージはルートではなく**そちら**に書く
+  3. ルートの **`vitest.shared.ts`** の `resolve.alias`（vitest・dev サーバー用）。**最寄りの設定が読まれる**ので、`apps/*` のように自前の `vite.config.ts` を持つパッケージはルートではなく**そちら**に書く
   4. ルート `package.json` の `tsx` 起動に `--tsconfig`
-  - 2〜4 はすべて「`dist/` の古い成果物を読む」という同じ壊れ方をする。**prebuild 忘れに気づけないまま通ってしまう**のが厄介な点
-- **`package.json` / `pnpm-workspace.yaml` を編集したら `pnpm install` は自動で走る**（PostToolUse hook、`.claude/hooks/pnpm-install-on-manifest-change.sh`）。手で叩く必要はない。発火の証跡は `.claude/.hook-log`
-- 落とし穴（対処済み）: `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` が無いと、非対話起動で `pnpm install` が corepack の確認待ちで無限に止まる
+  - 2〜4 はすべて「`@alt/*` を解決できない」という同じ壊れ方をする。**`dist` を捨てたので静かには壊れない**（以前は古い成果物を読んで緑になっていた）
+- **`package.json` / `pnpm-workspace.yaml` を編集したら `pnpm install` は自動で走る**（PostToolUse hook、`.claude/hooks/pnpm-install-on-manifest-change.sh`）。手で叩く必要はない。発火の証跡は `.claude/.hook-log`。**`mise.toml` は対象外**（版を変えたら install ではなくイメージの再ビルドが要る）
 - **コンテナ内で使い捨てスクリプトを実行するとき**（DBの中身を見る等）: **Write ツールでリポジトリ内の「依存を解決できるパッケージ配下」に置き**（例: `packages/cli/check.tmp.ts`）、`docker compose exec` で実行して消す。リポジトリは bind mount されているのでホストから置ける
   - scratchpad はコンテナから見えない。`/app` 直下や `/app/data` は pnpm の strict レイアウトのため依存を解決できず `ERR_MODULE_NOT_FOUND` になる（`better-sqlite3` は `packages/cli/node_modules` にしかない）
   - heredoc で `docker compose exec sh -c` に流し込まない（クォートが壊れる）

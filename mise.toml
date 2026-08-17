@@ -1,0 +1,13 @@
+[tools]
+node = "24.19.0"
+pnpm = "11.22.0"
+
+# ここが Node と pnpm の版の**唯一の真実**。
+#
+# `package.json` の `packageManager` は持たない（持つと版が2箇所に散る）。
+# 版を上げるときはこの2行を書き換えて `docker compose build` し直す
+# — イメージのビルド時に `mise install` が走る（Dockerfile）。
+#
+# Biome / TypeScript / vitest はここに書かない。npm パッケージとして
+# devDependencies に入れ、版は `pnpm-lock.yaml` で固定する
+# （アプリの依存と同じ土俵に載せたほうが、ローカルと CI がずれない）。

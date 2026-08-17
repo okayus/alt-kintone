@@ -1,0 +1,60 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  // 整形 + lint。vite-plus 時代の oxfmt + oxlint（.oxlintrc.json）を1つに置き換えたもの。
+  // 日常は `pnpm fmt`（= biome check --write）、検査は `pnpm lint`（= biome ci）。
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    // node_modules / dist / data は .gitignore 経由で除外される（useIgnoreFile）。
+    // ここに挙げるのは「追跡しているが Biome に触らせないもの」だけ:
+    //   testdata … 条件式ASTの適合テスト。TSとGoが同じJSONを流す**言語非依存の契約**で、
+    //              1ケース1行に手で畳んである（docs/condition-ast.md）。整形させると
+    //              1ケースが20行に展開されて、契約としての読みやすさが落ちる
+    //   .claude  … Claude Code の設定。このリポジトリのコードではない
+    "includes": ["**", "!testdata", "!.claude"]
+  },
+  // oxfmt の既定と同じ幅・同じ流儀。移行時に実測して、22,969行に対する差分は2ファイル8行だった。
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" }
+  },
+  "css": {
+    "formatter": { "quoteStyle": "single" }
+  },
+  "linter": {
+    "enabled": true,
+    // recommended から4つ落としてある。落とす基準は「このリポジトリの書き方と衝突し、
+    // 従うとコードの意味が変わる」もの。道具の入れ替えでコードを書き換えないため。
+    "rules": {
+      "preset": "recommended",
+
+      // 235件。`draft['closedAt']` を `draft.closedAt` にしろ、という指摘。
+      // レコードを動的なデータとして扱う（フィールド名が定義から来る）以上、
+      // ブラケットで読むのは意図であって書き癖ではない。
+      "complexity": { "useLiteralKeys": "off" },
+
+      // 「依存が**多すぎる**」側の指摘が誤検知になる。DealList の resetKey は
+      // 本体で参照しないが、変わったら再実行させるために意図して置いてある依存で、
+      // 消すと決定K（確定してもスクロールが飛ばない）が壊れる。
+      // → docs/impl/phase-7-list-grid-edit.md 決定K
+      "correctness": { "useExhaustiveDependencies": "off" },
+
+      // `!` は「定義から来ることが型に出ていない」場所で使っている。
+      // 消すには §8-2 論点15（table() の型消去）を解く必要があり、lint の仕事ではない。
+      "style": { "noNonNullAssertion": "off" },
+
+      // 15件。SidePanel のドラッグ用 div、グリッドのセル、UnreadBadge など。
+      // 従うと role / tabIndex / キーハンドラを足すことになり、**DOMフォーカスの所在**を
+      // 直接見ている browser テスト28本の前提が動く。UI の課題として別に扱う。
+      "a11y": { "preset": "none" }
+    }
+  },
+  // import の並べ替えは**切ってある**。oxfmt は並べ替えを持たなかったので、有効にすると
+  // 移行と無関係な84ファイルが並び替わる（順序だけで意味は変わらない）。
+  // 入れるなら "on" にして `pnpm fmt` を1回流す。それだけで済む。
+  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "off" } } }
+}

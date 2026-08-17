@@ -213,7 +213,7 @@ fetch エラーの配りは `QueryCache.onError` 1本で消え、境界を入れ
 
 ```sh
 docker compose up -d
-docker compose exec dev pnpm verify              # check:wiring → fmt:check → typecheck → lint → test
+docker compose exec dev pnpm verify              # check:wiring → lint → typecheck → test
 
 docker compose exec dev pnpm alt validate        # 定義の検証（--json あり）
 docker compose exec dev pnpm alt apply --recreate            # SQLite にスキーマを作り直す
@@ -235,10 +235,11 @@ curl -H 'X-Dev-User: yamada@example.com' 'localhost:3100/api/deal?flow=sales'
 
 - フェーズの着手は `/phase-start <N>`、完了処理（完了条件の検証・記録更新・コミット）は `/phase-done <N>`
 - **パッケージを追加したら4箇所**（compose の匿名ボリューム / `tsconfig.json` の `paths` /
-  `vite.config.ts` の `resolve.alias` / `tsx` 起動の `--tsconfig`）。**覚えなくてよい** —
+  `vitest.shared.ts` の `resolve.alias` / `tsx` 起動の `--tsconfig`）。**覚えなくてよい** —
   verify 先頭の `check:wiring`（`scripts/check-wiring.mjs`）が4つとも検知して落とす。
-  2〜4 はどれも「`dist/` の古い成果物を読んだまま通る」形で壊れるので、機械で塞いである。
-  alias は**最寄りの `vite.config.ts` が読まれる**ので、`apps/*` のように自前の設定を持つ
+  2〜4 はどれも「`@alt/*` を解決できない」形で壊れる（2026-08-17 に `dist` をやめたので、
+  以前のように古い成果物を読んで静かに通ることはなくなった）。
+  alias は**最寄りの設定が読まれる**ので、`apps/*` のように自前の `vite.config.ts` を持つ
   パッケージはルートではなくそちらに書く（フェーズ4で判明）
 - **`package.json` を編集したら `pnpm install` は hook が自動で流す**（`.claude/hooks/`）
 - **コンテナ内で使い捨てスクリプトを走らせるとき**は置き場に注意（CLAUDE.md「開発環境」参照）。

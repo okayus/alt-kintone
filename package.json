@@ -3,12 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.18.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "verify": "pnpm check:wiring && pnpm fmt:check && pnpm typecheck && pnpm lint && pnpm test",
+    "verify": "pnpm check:wiring && pnpm lint && pnpm typecheck && pnpm test",
     "alt": "tsx --tsconfig packages/cli/tsconfig.json packages/cli/src/main.ts",
     "serve": "tsx --tsconfig packages/server/tsconfig.json packages/server/src/main.ts",
     "dev": "pnpm --filter @alt/main dev",
@@ -16,15 +15,14 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
-    "lint": "pnpm -r run lint",
-    "fmt": "pnpm -r run fmt",
-    "fmt:check": "pnpm -r run fmt:check"
+    "lint": "biome ci .",
+    "fmt": "biome check --write ."
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.8",
     "@types/node": "^24.13.0",
     "tsx": "4.19.2",
     "typescript": "7.0.2",
-    "vite-plus": "^0.2.1",
     "vitest": "4.1.10"
   }
 }

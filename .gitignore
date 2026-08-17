@@ -7,9 +7,6 @@ data/
 *.local
 .DS_Store
 
-# `vp pack --dts` が型生成の副産物として src に .d.ts を残す（生成物）
-packages/*/src/*.d.ts
-
 # Claude Code の個人設定（許可リスト）。コマンド・hook・settings.json は共有する
 .claude/settings.local.json
 # PostToolUse hook の発火証跡（.claude/hooks/pnpm-install-on-manifest-change.sh）

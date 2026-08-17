@@ -332,7 +332,9 @@ function window(a: Acc, options: SelectRecordsOptions): string {
   if (options.ids !== undefined) return ''
   const limit = Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
   const offset = Math.max(options.offset ?? 0, 0)
-  return ` LIMIT ${bind(a, limit)}` + (offset > 0 ? ` OFFSET ${bind(a, offset)}` : '')
+  // bind は a に積む副作用があるので、limit → offset の順に評価されることが要る
+  // （テンプレートリテラルの式は左から評価されるので、この形で保たれる）。
+  return ` LIMIT ${bind(a, limit)}${offset > 0 ? ` OFFSET ${bind(a, offset)}` : ''}`
 }
 
 /**

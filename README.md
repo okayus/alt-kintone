@@ -38,13 +38,33 @@ TS版バックエンドは仕様であり、Go版完成後は実装を捨てて
 
 今後増える予定: 管理画面FE。
 
+## ツールチェーン
+
+| 役割 | 何 | 設定の置き場 |
+|---|---|---|
+| Node と pnpm の版 | **mise** | `mise.toml`（**版の唯一の真実**。`packageManager` は持たない） |
+| パッケージ管理 | **pnpm**（mise が入れるネイティブバイナリ。corepack は使わない） | `pnpm-workspace.yaml` |
+| 整形 + lint | **Biome** | `biome.jsonc` |
+| テスト | **vitest** | `vitest.shared.ts`（packages/\*）/ `apps/main/vite.config.ts` |
+| 型検査 | **TypeScript 7**（`tsc --noEmit`） | `tsconfig.base.json` + 各パッケージ |
+| dev サーバー / FEビルド | **vite 8**（Rolldown） | `apps/main/vite.config.ts` |
+| TS の直接実行（`alt` / `serve`） | **tsx** | ルート `package.json`（`--tsconfig` 必須） |
+
+**`packages/*` は `dist` を作らない。** `main` / `types` / `exports` を持たず、参照はすべて
+`paths`（tsc）と `resolve.alias`（vitest / vite）と `tsx --tsconfig` でソースを直接指す。
+だから prebuild が要らず、配線を書き漏らすと **その場で `ERR_MODULE_NOT_FOUND`** になる
+（後述の「4箇所」）。`pnpm build` が意味を持つのは `apps/main` だけ。
+
+> `biome.jsonc` が `.json` ではないのは、Biome が `biome.json` の中の `//` コメントを
+> **エラーにせず黙って既定設定へフォールバックする**ため。設定が効かなくても何も言われない。
+
 ## 開発（Docker）
 
 インフラ（ホスティング・マネージドDB）は決めない方針で、**プロトタイプはローカルで動けばよい**。
 
 ```sh
 docker compose up -d                   # イメージをビルドし、pnpm install して常駐
-docker compose exec dev pnpm verify    # check:wiring → fmt:check → typecheck → lint → test
+docker compose exec dev pnpm verify    # check:wiring → lint → typecheck → test
 ```
 
 `pnpm install` は compose の `command` が起動時に実行するので、別途叩く必要はない。
@@ -65,28 +85,39 @@ API は `localhost:3100`、FE の dev サーバーは `localhost:5273` になる
 > docker compose exec dev sh -c 'rm -f node_modules/.pnpm-workspace-state-v1.json node_modules/.package-map.json && pnpm install'
 > ```
 
+Node と pnpm はイメージの中で **mise** が入れる（`mise.toml` の版を `docker compose build` 時に固定）。
+つまり **`mise.toml` を書き換えたらイメージをビルドし直す**。コンテナの中で `node --version` が
+`mise.toml` と違う版を返すときは、`/app/mise.toml` が信頼されていない
+（`Dockerfile` の `MISE_TRUSTED_CONFIG_PATHS` を確認する。**エラーを出さずにイメージ側の Node へ
+黙って落ちる**のがこの設定のいやらしいところ）。
+
 ## 開発（Docker なし）
 
+ホスト側にも mise があれば同じ版で動く。
+
 ```sh
+mise install     # mise.toml の node と pnpm を入れる
 pnpm install
-pnpm test
-pnpm typecheck
+pnpm verify
 ```
 
 ## コマンド
 
 | command | what |
 |---|---|
-| **`pnpm verify`** | **check:wiring → fmt:check → typecheck → lint → test をまとめて実行。コミット前はこれ1つでよい**（安い順に並べて、落ちるなら早く落とす） |
+| **`pnpm verify`** | **check:wiring → lint → typecheck → test をまとめて実行。コミット前はこれ1つでよい**（安い順に並べて、落ちるなら早く落とす） |
 | `pnpm check:wiring` | パッケージ追加時の「4箇所」の追記漏れチェック（下記） |
-| `pnpm test` | 全パッケージのテスト（vitest / `vp test`） |
+| `pnpm lint` | `biome ci` — **書き換えずに**整形・lint をまとめて検査（50ms） |
+| `pnpm fmt` | `biome check --write` — 整形と安全な lint 修正を当てる |
 | `pnpm typecheck` | 全パッケージの型検査（`tsc --noEmit`） |
-| `pnpm build` | 全パッケージのビルド（tsdown / `vp pack`） |
-| `pnpm lint` | oxlint（`vp lint`） |
-| `pnpm fmt` | oxfmt（`vp fmt`） |
+| `pnpm test` | 全パッケージのテスト（vitest） |
+| `pnpm build` | FE の本番ビルド（`vite build`）。`packages/*` はビルドしない（`dist` を持たない） |
 | `pnpm alt <cmd>` | `alt` コマンド（下記） |
 | `pnpm serve` | API サーバーを起動（`localhost:3100`。下記） |
 | `pnpm dev` | FE の dev サーバーを起動（`localhost:5273`。下記） |
+
+`verify` に `fmt:check` が無いのは、Biome が整形の検査も `lint`（= `biome ci`）でまとめて
+やってくれるため。全体で 50ms なので、以前のように「安い整形チェックを前に出す」理由も消えた。
 
 ### ブラウザテスト（vitest browser mode）
 
@@ -167,15 +198,19 @@ FE は `/api` を同じコンテナ内の API に proxy するので、CORS は�
 ### パッケージを追加したときの「4箇所」
 
 `typecheck` / `test` / `alt` は **prebuild を必要としない**。パッケージ間の参照がソースを直接指すよう、
-同じ解決を複数箇所で与えているため。**どれを忘れても即座には壊れず、`dist/` の古い成果物を
-読んだまま通ってしまう**（prebuild 忘れに気づけない、という一番たちの悪い壊れ方）。
+同じ解決を複数箇所で与えているため。
 
 | # | 対象 | 設定 |
 |---|---|---|
 | 1 | コンテナ内の依存 | `docker-compose.yml` の匿名ボリューム |
 | 2 | typecheck（tsc） | そのパッケージの `tsconfig.json` の `paths` |
-| 3 | test（vitest）と dev サーバー | `vite.config.ts` の `resolve.alias`。`packages/*` はルート、**自前の `vite.config.ts` を持つ `apps/*` はそちら**（最寄りの設定が読まれるので、ルートに書いても効かない） |
-| 4 | `alt` の実行時 | ルート `package.json` の `tsx` 起動に `--tsconfig`（2 を実行時にも効かせる） |
+| 3 | test（vitest）と dev サーバー | ルートの **`vitest.shared.ts`** の `resolve.alias`。ただし**自前の `vite.config.ts` を持つ `apps/*` はそちら**（最寄りの設定が読まれるので、ルートに書いても効かない） |
+| 4 | `alt` / `serve` の実行時 | ルート `package.json` の `tsx` 起動に `--tsconfig`（2 を実行時にも効かせる） |
+
+**書き漏らすとその場で落ちる。** `@alt/*` は `main` も `exports` も持たないので、alias や paths が
+無ければ解決先が存在せず `ERR_MODULE_NOT_FOUND` / `Cannot find module` になる。
+`vp pack` で `dist` を作っていた頃は、ここを忘れると**古いビルド成果物が静かに読まれ**、
+prebuild 忘れに気づけないまま緑になっていた — `dist` を捨てたのはその罠を構造的に消すため。
 
 覚えておく必要はない。**`pnpm check:wiring`（`verify` の先頭）が4つとも検知して落とす。**
 消し忘れ（対応するパッケージが無い alias など）は警告として出すが、失敗にはしない。
@@ -187,6 +222,4 @@ FE は `/api` を同じコンテナ内の API に proxy するので、CORS は�
 compose の `command` は起動時にしか install しないので、依存を足したあとの叩き忘れで
 `Cannot find module` / `TS2307` を踏むのを防ぐ。発火の証跡は `.claude/.hook-log`（gitignore 済み）。
 
-vitest 側が要るのは、無いと workspace のシンボリックリンク経由で `dist/` の**ビルド済み成果物**を
-読んでしまうため。prebuild を忘れると「古いコードのままテストが通る」という一番たちの悪い壊れ方をする。
-パッケージを追加したら**両方**に追記すること。
+`mise.toml` は対象外（版を変えたら `pnpm install` ではなく `docker compose build` が要るため）。
